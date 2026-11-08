@@ -1,0 +1,26 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: windows-latest          # the app is Windows-only (DPAPI, Task Scheduler, registry)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4  # the browser-extension parity tests run the JavaScript in Node
+        with:
+          node-version: "20"
+      - run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: python -m pyflakes sentinel tools main.py tests
+      - name: Types
+        run: python -m mypy
+      - name: Generated browser files are up to date
+        run: python tools/sync_extension_rules.py --check
+      - name: Tests with coverage (fails under the threshold in pyproject.toml)
+        run: |
+          python -m coverage run -m pytest
+          python -m coverage report

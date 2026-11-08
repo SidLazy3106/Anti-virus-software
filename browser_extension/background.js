@@ -1,4 +1,4 @@
-importScripts("analyzer.js");
+importScripts("url_rules.js", "analyzer.js");
 
 let blocklist = null;
 async function getBlocklist() {

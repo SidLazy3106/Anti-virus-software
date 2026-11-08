@@ -15,14 +15,16 @@ from pathlib import Path
 from typing import Optional
 
 from . import config
+from .platform_utils import IS_WIN
+from .winconst import MB_ICONWARNING, MB_TOPMOST
 
-TASK = r"X-Secure\Scheduled Scan"
+TASK = config.SCHEDULER_TASK_NAME
 DAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 HHMM = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
 
 def _schtasks(*args) -> subprocess.CompletedProcess:
-    return subprocess.run(["schtasks", *args], capture_output=True, text=True, errors="replace", timeout=30,
+    return subprocess.run(["schtasks", *args], capture_output=True, text=True, errors="replace", timeout=config.SCHEDULER_TIMEOUT_SECONDS,
                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
@@ -41,7 +43,7 @@ def task_command(kind: str = "quickscan") -> str:
     return f'"{pyw if pyw.exists() else exe}" "{main}" {kind} --scheduled'
 
 
-def create(at: str, kind: str = "quickscan", weekly_day: Optional[str] = None) -> tuple:
+def create(at: str, kind: str = "quickscan", weekly_day: Optional[str] = None) -> tuple[bool, str]:
     """(ok, message). at = 'HH:MM' (24h). Daily unless weekly_day ('MON'..'SUN') is given."""
     m = HHMM.match(at.strip())
     if not m:
@@ -50,8 +52,8 @@ def create(at: str, kind: str = "quickscan", weekly_day: Optional[str] = None) -
         return False, "Scan type must be quickscan or fullscan."
     at = f"{int(m.group(1)):02d}:{m.group(2)}"
     cmd = task_command(kind)
-    if len(cmd) > 261:
-        return False, "The install path is too long for Task Scheduler (261 characters max)."
+    if len(cmd) > config.SCHEDULER_MAX_COMMAND_CHARS:
+        return False, f"The install path is too long for Task Scheduler ({config.SCHEDULER_MAX_COMMAND_CHARS} characters max)."
     args = ["/Create", "/TN", TASK, "/TR", cmd, "/ST", at, "/F"]
     if weekly_day:
         day = weekly_day.upper()[:3]
@@ -71,12 +73,12 @@ def create(at: str, kind: str = "quickscan", weekly_day: Optional[str] = None) -
     return True, f"{label} scheduled {when}."
 
 
-def query() -> Optional[dict]:
+def query() -> Optional[dict[str, str]]:
     """The task's details, or None if no schedule exists."""
     r = _schtasks("/Query", "/TN", TASK, "/FO", "LIST", "/V")
     if r.returncode != 0:
         return None
-    info = {}
+    info: dict[str, str] = {}
     for line in r.stdout.splitlines():
         if ":" in line:
             k, v = line.split(":", 1)
@@ -93,7 +95,7 @@ def describe() -> str:
     return f"{kind}, next run {nxt}" if nxt and nxt.upper() != "N/A" else kind
 
 
-def remove() -> tuple:
+def remove() -> tuple[bool, str]:
     if query() is None:
         return True, "No scheduled scan was set."
     r = _schtasks("/Delete", "/TN", TASK, "/F")
@@ -101,7 +103,7 @@ def remove() -> tuple:
     return ok, "Scheduled scan turned off." if ok else (r.stderr or r.stdout).strip()
 
 
-def run_now() -> tuple:
+def run_now() -> tuple[bool, str]:
     r = _schtasks("/Run", "/TN", TASK)
     return r.returncode == 0, (r.stdout or r.stderr).strip()
 
@@ -122,10 +124,10 @@ def last_result() -> Optional[dict]:
 
 def notify(threats: int):
     """Small Windows message box after an unattended scan that found something."""
-    if sys.platform != "win32" or not threats:
+    if not IS_WIN or not threats:
         return
     import ctypes
     ctypes.windll.user32.MessageBoxW(
         None, f"The scheduled X-Secure scan flagged {threats} item(s).\n\nOpen X-Secure and go to Scan to review "
               f"them. Nothing was deleted or quarantined automatically.", "X-Secure scheduled scan",
-        0x30 | 0x40000)  # MB_ICONWARNING | MB_TOPMOST
+        MB_ICONWARNING | MB_TOPMOST)

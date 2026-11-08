@@ -1,0 +1,8 @@
+{
+  "version": "1.0.0",
+  "file": "X-Secure-1.0.0-win64-portable.zip",
+  "size": 25283252,
+  "sha256": "d3a2ea19b2a30adfc5b0f43acba46ea83d0bb5bd5930ddeeb239caf39e5f5782",
+  "built": "2026-11-08",
+  "requires": "Windows 10 or Windows 11 (64-bit)"
+}

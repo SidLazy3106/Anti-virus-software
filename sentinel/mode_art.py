@@ -70,14 +70,13 @@ def draw(cv, key: str, box: tuple, progress: float):
             x = i / (n - 1)
             y = curves(key, x)[idx]
             pts.append((off + (x1 - x0) * x, off + (y1 - y0) * (1 - y)))
-        if len(pts) >= 2:
-            layer.append((pts, T[tok], dp(2.4), True, 0))
-            heads.append((pts[-1], T[tok]))
-    if aa.available() and layer:
+        layer.append((pts, T[tok], dp(2.4), True, 0))
+        heads.append((pts[-1], T[tok]))
+    if aa.available():
         ss = 3 if progress >= 1 else 2          # cheaper while moving, sharper once still
         img = aa.cached(("mode", key, W, H, shown, ss), lambda: aa.lines_image(W, H, layer, ss))
         aa.put(cv, x0 - off, y0 - off, img)
-    elif layer:
+    else:
         for pts, col, wd, _s, _a in layer:
             cv.create_line(*[c for p in pts for c in (x0 - off + p[0], y0 - off + p[1])], fill=col, width=wd,
                            smooth=True, capstyle="round", joinstyle="round")

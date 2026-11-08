@@ -8,15 +8,11 @@ import json
 import os
 import re
 import subprocess
-import sys
 from dataclasses import dataclass, field
 
-try:
-    import psutil
-except ImportError:
-    psutil = None
+from .platform_utils import psutil
 
-IS_WIN = sys.platform == "win32"
+from .platform_utils import IS_WIN
 WEIGHT = {"high": 15, "medium": 7, "low": 3, "info": 0}
 
 RISKY_CMD = re.compile(
@@ -84,7 +80,7 @@ def check_defender():
                     "AntivirusSignatureAge | ConvertTo-Json")
     if not data:
         return [Finding("info", "Hardening", "Windows Defender status unavailable (third-party antivirus?)")]
-    out = []
+    out: list = []
     if not data.get("RealTimeProtectionEnabled"):
         out.append(Finding("high", "Hardening", "Defender real-time protection is off",
                            "Ignore if another antivirus is active.", "Windows Security > Virus & threat protection"))
@@ -173,7 +169,7 @@ IFEO_HIJACK = {"sethc.exe", "utilman.exe", "osk.exe", "narrator.exe", "magnify.e
 
 def parse_hosts(text: str) -> list:
     """Return [(ip, hostname)] from hosts-file text (comments stripped)."""
-    out = []
+    out: list = []
     for line in text.splitlines():
         parts = line.split("#", 1)[0].split()
         if len(parts) >= 2:

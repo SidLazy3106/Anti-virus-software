@@ -18,12 +18,9 @@ import time
 from pathlib import Path
 from typing import Optional
 
-try:
-    import psutil
-except ImportError:
-    psutil = None
+from .platform_utils import psutil
 
-from . import config, hardware
+from . import config, hardware, logger
 
 # key, label, unit, higher_is_worse
 METRICS = [
@@ -76,7 +73,7 @@ def set_consent(on: bool):
     _save(d)
 
 
-def sessions() -> list:
+def sessions() -> list[dict]:
     return _load().get("sessions", [])
 
 
@@ -145,8 +142,8 @@ def measure(label: str, profile: Optional[str], seconds: int = 30, cancel: Optio
     try:
         from . import optimizer
         plan = optimizer.active_plan()[1]
-    except Exception:
-        pass
+    except (ImportError, OSError, IndexError) as e:     # the power plan is optional context for the report
+        logger.get().info("analytics: could not read the power plan: %s", e)
     sess = {
         "id": f"{int(t0)}", "label": label, "profile": profile, "time": t0, "duration": round(elapsed, 1),
         "interval_s": 1.0, "hw_id": hardware_id(), "conditions": {"on_ac": live["on_ac"],

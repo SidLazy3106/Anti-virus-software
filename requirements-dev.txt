@@ -1,0 +1,6 @@
+# Tools for developing X-Secure:  pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8
+coverage>=7
+mypy>=1.10
+pyflakes>=3

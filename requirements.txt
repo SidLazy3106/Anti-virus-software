@@ -1,6 +1,7 @@
-psutil>=5.9
-watchdog>=3.0
+# Runtime dependencies (ranges). Exact versions that were tested together are pinned in requirements.lock.
+psutil>=5.9,<8
+watchdog>=3.0,<8
 pefile>=2023.2.7
-pillow>=10      # smooth (antialiased) shapes and graphs in the app; plain drawing without it
+pillow>=10,<14      # smooth (antialiased) shapes and graphs in the app; plain drawing without it
 # Optional: YARA rule matching (needs build tools on some platforms)
 # yara-python>=4.3

@@ -24,3 +24,13 @@ dist/
 .idea/
 Thumbs.db
 Desktop.ini
+
+# Test / type-check / coverage output
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+
+# Release output (built by tools/build_release.py; publish the zip as a GitHub Release asset)
+release/
+docs/downloads/

@@ -10,18 +10,15 @@ from __future__ import annotations
 import json
 import platform
 import subprocess
-import sys
 import time
-from typing import Optional
+from typing import Any, Optional
 
-try:
-    import psutil
-except ImportError:
-    psutil = None
+from .platform_utils import psutil
 
 from . import config
+from .winconst import SPI_GETCLIENTAREAANIMATION
 
-IS_WIN = sys.platform == "win32"
+from .platform_utils import IS_WIN
 LAPTOP_CHASSIS = {8, 9, 10, 11, 12, 14, 18, 21, 30, 31, 32}
 DESKTOP_CHASSIS = {3, 4, 5, 6, 7, 13, 15, 16, 23, 24, 34, 35, 36}
 
@@ -46,9 +43,9 @@ def _reg(path: str, name: str):
         return None
 
 
-def _gpu_registry() -> list:
+def _gpu_registry() -> list[tuple]:
     """[(name, vram_bytes or None)] from the display-adapter class key. Fast, no PowerShell."""
-    out = []
+    out: list[tuple] = []
     if not IS_WIN:
         return out
     base = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
@@ -165,12 +162,12 @@ def get_profile(force: bool = False, query=None) -> dict:
 
 def live_status() -> dict:
     """Values that change: available RAM, battery. Always read fresh."""
-    out = {"ram_available": None, "battery_pct": None, "on_ac": None}
+    out: dict[str, Any] = {"ram_available": None, "battery_pct": None, "on_ac": None}
     if psutil:
         out["ram_available"] = psutil.virtual_memory().available
         try:
             b = psutil.sensors_battery()
-        except Exception:
+        except (AttributeError, OSError, psutil.Error):   # no battery sensor on this machine
             b = None
         if b is not None:
             out["battery_pct"], out["on_ac"] = round(b.percent), bool(b.power_plugged)
@@ -195,9 +192,9 @@ def reduced_motion() -> bool:
     try:
         import ctypes
         flag = ctypes.c_int(1)
-        ok = ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(flag), 0)  # CLIENTAREAANIMATION
+        ok = ctypes.windll.user32.SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, ctypes.byref(flag), 0)
         return bool(ok) and flag.value == 0
-    except Exception:
+    except (OSError, AttributeError):
         return False
 
 

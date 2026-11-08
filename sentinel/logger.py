@@ -18,7 +18,7 @@ def get() -> logging.Logger:
         try:
             config.ensure_dirs()
             h = logging.handlers.RotatingFileHandler(
-                config.LOG_FILE, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+                config.LOG_FILE, maxBytes=config.LOG_MAX_BYTES, backupCount=config.LOG_BACKUP_COUNT, encoding="utf-8")
             h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
             _log.addHandler(h)
         except OSError:

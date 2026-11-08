@@ -7,30 +7,20 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from urllib.parse import urlsplit
 
-from . import config
+from . import config, url_rules
+from .verdict import Verdict
 
-BRANDS = ["google", "microsoft", "paypal", "amazon", "facebook", "instagram", "netflix", "github",
-          "apple", "icloud", "outlook", "whatsapp", "linkedin", "dropbox", "binance", "coinbase",
-          "paytm", "phonepe", "flipkart", "hdfcbank", "icicibank", "sbi"]
+# The lists below live in sentinel/data/url_rules.json, which the browser extension and website share.
+_RULES = url_rules.load()
+BRANDS = _RULES["brands"]
 # Genuine registered domains that legitimately contain brand names (extend or replace with a Tranco top-sites list).
-OFFICIAL = {"google.com", "gstatic.com", "googlevideo.com",
-            "microsoft.com", "microsoftonline.com", "live.com", "office.com", "paypal.com",
-            "amazon.com", "amazon.in", "facebook.com", "fbcdn.net", "instagram.com",
-            "netflix.com", "github.com", "apple.com", "icloud.com", "whatsapp.com",
-            "linkedin.com", "dropbox.com", "binance.com", "coinbase.com", "paytm.com", "phonepe.com",
-            "flipkart.com", "hdfcbank.com", "icicibank.com", "sbi.co.in"}
-RISKY_TLDS = {"zip", "mov", "top", "xyz", "click", "tk", "ml", "ga", "cf", "gq", "work", "country",
-              "kim", "loan", "men", "icu", "cyou"}
-KEYWORDS = ["login", "signin", "verify", "secure", "account", "update", "wallet", "password",
-            "billing", "confirm", "suspend"]
-MULTI = {"co.uk", "com.au", "co.in", "org.in", "net.in", "ac.in", "gov.in", "co.jp", "com.br", "co.za"}
+OFFICIAL = set(_RULES["official_domains"])
+RISKY_TLDS = set(_RULES["risky_tlds"])
+KEYWORDS = _RULES["keywords"]
+MULTI = set(_RULES["multi_part_suffixes"])
 LEET = str.maketrans({"0": "o", "1": "l", "3": "e", "5": "s", "@": "a"})
 # Shared hosting / user-content platforms: anyone can publish here, so brand + keyword checks still apply.
-USER_CONTENT = {"amazonaws.com", "googleapis.com", "googleusercontent.com", "githubusercontent.com", "windows.net",
-                "appspot.com", "firebaseapp.com", "web.app", "github.io", "pages.dev", "workers.dev", "r2.dev",
-                "netlify.app", "vercel.app", "herokuapp.com", "azurewebsites.net", "blogspot.com",
-                "000webhostapp.com", "glitch.me", "wixsite.com", "weebly.com", "ngrok.io", "ngrok-free.app",
-                "trycloudflare.com", "ipfs.io", "dweb.link"}
+USER_CONTENT = set(_RULES["user_content_hosts"])
 _IPV4_PART = re.compile(r"^(0x[0-9a-f]*|0[0-7]*|[1-9][0-9]*)$")
 
 
@@ -38,8 +28,8 @@ _IPV4_PART = re.compile(r"^(0x[0-9a-f]*|0[0-7]*|[1-9][0-9]*)$")
 class UrlVerdict:
     url: str
     score: int = 0
-    verdict: str = "clean"
-    reasons: list = field(default_factory=list)
+    verdict: Verdict = Verdict.CLEAN
+    reasons: list[str] = field(default_factory=list)
 
 
 @lru_cache(maxsize=1)
@@ -150,10 +140,10 @@ def analyze_url(url: str) -> UrlVerdict:
         parts = urlsplit(u)
         host = (parts.hostname or "").lower().rstrip(".")
     except ValueError:
-        v.score, v.verdict, v.reasons = 50, "suspicious", ["Malformed URL"]
+        v.score, v.verdict, v.reasons = 50, Verdict.SUSPICIOUS, ["Malformed URL"]
         return v
     if not host:
-        v.score, v.verdict, v.reasons = 50, "suspicious", ["No hostname"]
+        v.score, v.verdict, v.reasons = 50, Verdict.SUSPICIOUS, ["No hostname"]
         return v
     if not host.isascii():  # browsers convert Unicode domains to punycode (xn--); do the same
         try:
@@ -232,6 +222,5 @@ def analyze_url(url: str) -> UrlVerdict:
         add(10, "Very long URL")
 
     v.score = min(v.score, 100)
-    v.verdict = ("malicious" if v.score >= config.MALICIOUS_THRESHOLD
-                 else "suspicious" if v.score >= config.SUSPICIOUS_THRESHOLD else "clean")
+    v.verdict = Verdict.from_score(v.score)
     return v

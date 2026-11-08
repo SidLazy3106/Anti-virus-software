@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "x-secure"
+version = "1.0.0"          # keep equal to sentinel/config.py VERSION (a test checks this)
+description = "Windows antivirus / browser safety / security audit toolkit (learning project)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "psutil>=5.9,<8",
+    "watchdog>=3.0,<8",
+    "pefile>=2023.2.7",
+    "pillow>=10,<14",
+]
+
+[project.optional-dependencies]
+yara = ["yara-python>=4.3"]
+dev = ["pytest>=8", "coverage>=7", "mypy>=1.10", "pyflakes>=3"]
+
+[project.scripts]
+x-secure = "sentinel.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sentinel*"]
+
+[tool.setuptools.package-data]
+sentinel = ["signatures/*", "rules/*", "data/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider"
+
+[tool.coverage.run]
+branch = true
+source = ["sentinel", "tools"]
+# build_release.py is exercised by actually running it (it builds and launches the real executables)
+omit = ["tools/build_release.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 99
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "pragma: no cover",
+]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+files = ["sentinel", "tools"]

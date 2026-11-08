@@ -4,7 +4,7 @@ Sources (checked working in Nov 2026; abuse.ch retired its old keyless export UR
 * URLhaus malware domains, via the malware-filter project's mirror of the URLhaus database (updated ~2x/day)
 * Phishing Army community phishing-domain blocklist (CC BY-NC 4.0: fine for this non-commercial project)
 * MalwareBazaar recent SHA-256 hashes through the abuse.ch API, which needs a free Auth-Key
-  (https://auth.abuse.ch). Set XSECURE_FEED_KEY (or the older SENTINEL_FEED_KEY) to enable it.
+  (see config.HASH_API_SIGNUP_URL). Set XSECURE_FEED_KEY (or the older SENTINEL_FEED_KEY) to enable it.
 
 Each feed is stored in its own file, so one feed failing never wipes data from another, and a feed that returns
 nothing usable (an error page, a format change) never replaces a working list.
@@ -12,35 +12,31 @@ nothing usable (an error page, a format change) never replaces a working list.
 from __future__ import annotations
 
 import json
-import os
 import re
 import urllib.parse
 import urllib.request
 
 from . import config
 
-DOMAIN_FEEDS = {
-    "urlhaus": ("URLhaus malware domains", "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-domains.txt"),
-    "phishing_army": ("Phishing Army phishing domains", "https://phishing.army/download/phishing_army_blocklist.txt"),
-}
-HASH_API = "https://mb-api.abuse.ch/api/v1/"
-PSL_URL = "https://publicsuffix.org/list/public_suffix_list.dat"
+DOMAIN_FEEDS = config.DOMAIN_FEEDS
+HASH_API = config.HASH_API_URL
+PSL_URL = config.PSL_URL
 PSL_LABEL = "Public Suffix List"
 HASH_FILE = "hashes_malwarebazaar.txt"
 HASH_LABEL = "MalwareBazaar malware hashes"
 HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
 DOMAIN = re.compile(r"^(?=.{4,253}$)([a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}$")
-UA = f"X-Secure/{getattr(config, 'VERSION', '1')} (threat-feed updater)"
+UA = f"{config.APP_NAME}/{config.VERSION} (threat-feed updater)"
 
 
 def feed_key():
-    return os.environ.get("XSECURE_FEED_KEY") or os.environ.get("SENTINEL_FEED_KEY")
+    return config.env_first(config.ENV_FEED_KEY)
 
 
 def _fetch(url: str, data: dict | None = None, headers: dict | None = None) -> str:
     body = urllib.parse.urlencode(data).encode() if data else None
     req = urllib.request.Request(url, data=body, headers={"User-Agent": UA, **(headers or {})})
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with urllib.request.urlopen(req, timeout=config.FEED_TIMEOUT_SECONDS) as r:
         return r.read().decode("utf-8", errors="ignore")
 
 
@@ -75,7 +71,7 @@ def _feeds_dir():
 
 def _rebuild_domain_list() -> int:
     """bad_domains.txt (what the web guard reads) = union of every feed's last good download."""
-    merged = set()
+    merged: set[str] = set()
     for f in _feeds_dir().glob("domains_*.txt"):
         merged.update(x for x in f.read_text(encoding="utf-8", errors="ignore").split() if x)
     if merged:
@@ -90,7 +86,7 @@ def update_feeds() -> dict:
     for slug, (label, url) in DOMAIN_FEEDS.items():
         try:
             doms = sorted(set(parse_domains(_fetch(url))))
-            if len(doms) < 10:  # an error page or a format change, not a real list
+            if len(doms) < config.FEED_MIN_DOMAINS:  # an error page or a format change, not a real list
                 raise ValueError("feed returned no usable entries (format change or access denied); kept previous list")
             (_feeds_dir() / f"domains_{slug}.txt").write_text("\n".join(doms) + "\n", encoding="utf-8")
             report[label] = f"{len(doms):,} domains"
@@ -102,7 +98,7 @@ def update_feeds() -> dict:
     try:                                   # Public Suffix List: correct "registered domain" for every country TLD
         psl = _fetch(PSL_URL)
         rules = sum(1 for ln in psl.splitlines() if ln.strip() and not ln.startswith("//"))
-        if "===BEGIN ICANN DOMAINS===" not in psl or rules < 1000:
+        if "===BEGIN ICANN DOMAINS===" not in psl or rules < config.FEED_MIN_PSL_RULES:
             raise ValueError("unexpected content; kept previous list")
         (config.UPDATED_SIGS_DIR / "public_suffix_list.dat").write_text(psl, encoding="utf-8")
         report[PSL_LABEL] = f"{rules:,} rules"
@@ -111,7 +107,7 @@ def update_feeds() -> dict:
 
     key = feed_key()
     if not key:
-        report[HASH_LABEL] = ("skipped: MalwareBazaar needs a free Auth-Key from https://auth.abuse.ch; "
+        report[HASH_LABEL] = (f"skipped: MalwareBazaar needs a free Auth-Key from {config.HASH_API_SIGNUP_URL}; "
                               "set XSECURE_FEED_KEY to enable it")
     else:
         try:

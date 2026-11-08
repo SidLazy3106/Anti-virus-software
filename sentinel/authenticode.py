@@ -8,17 +8,16 @@ which simply means no reduction; it is never treated as a sign of malware.
 from __future__ import annotations
 
 import ctypes
-import sys
 import uuid
 from ctypes import wintypes
 
-IS_WIN = sys.platform == "win32"
+from .platform_utils import IS_WIN
+from .winconst import WTD_CACHE_ONLY_URL_RETRIEVAL, WTD_REVOCATION_CHECK_NONE
 
 # {00AAC56B-CD44-11d0-8CC2-00C04FC295EE}
 _ACTION_GENERIC_VERIFY_V2 = uuid.UUID("00AAC56B-CD44-11d0-8CC2-00C04FC295EE")
 WTD_UI_NONE, WTD_REVOKE_NONE, WTD_CHOICE_FILE = 2, 0, 1
 WTD_STATEACTION_VERIFY, WTD_STATEACTION_CLOSE = 1, 2
-WTD_REVOCATION_CHECK_NONE, WTD_CACHE_ONLY_URL_RETRIEVAL = 0x10, 0x1000
 
 
 class _GUID(ctypes.Structure):

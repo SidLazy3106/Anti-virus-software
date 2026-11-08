@@ -14,8 +14,8 @@ from collections import OrderedDict
 
 try:
     from PIL import Image, ImageDraw, ImageTk
-except ImportError:  # optional dependency
-    Image = ImageDraw = ImageTk = None
+except ImportError:  # pragma: no cover - optional dependency
+    Image = ImageDraw = ImageTk = None  # type: ignore[assignment]
 
 SS = 4                     # supersampling factor for small shapes
 LINE_SS = 3                # graph lines (larger images, redrawn often)
@@ -59,7 +59,7 @@ def _rrect_direct(w, h, r, fill, outline, width):
     d.rounded_rectangle((0, 0, w * s - 1, h * s - 1), radius=max(0, r * s), fill=rgba(fill) if fill else None,
                         outline=rgba(outline) if outline and width else None,
                         width=max(1, int(round(width * s))) if outline and width else 0)
-    return big.resize((w, h), Image.LANCZOS)
+    return big.resize((w, h), Image.Resampling.LANCZOS)
 
 
 def rrect_image(w: int, h: int, r: float, fill=None, outline=None, width: float = 0):
@@ -101,7 +101,7 @@ def circle_image(d: float, fill=None, outline=None, width: float = 0):
         ImageDraw.Draw(big).ellipse((0, 0, d * s - 1, d * s - 1), fill=rgba(fill) if fill else None,
                                     outline=rgba(outline) if outline and width else None,
                                     width=max(1, int(round(width * s))) if outline and width else 0)
-        return big.resize((d, d), Image.LANCZOS)
+        return big.resize((d, d), Image.Resampling.LANCZOS)
     return _cached(("ci", d, fill, outline, round(width, 2)), make)
 
 
@@ -128,7 +128,7 @@ def ring_image(size: int, thickness: float, frac: float, color, track):
                     a = math.radians(ang)
                     cx, cy = S / 2 + rad * math.cos(a), S / 2 + rad * math.sin(a)
                     d.ellipse((cx - t / 2, cy - t / 2, cx + t / 2, cy + t / 2), fill=rgba(color))
-        return big.resize((size, size), Image.LANCZOS)
+        return big.resize((size, size), Image.Resampling.LANCZOS)
     return _cached(("ring", size, round(thickness, 2), round(frac, 3), color, track), make)
 
 
@@ -167,7 +167,7 @@ def lines_image(w: int, h: int, series: list, ss: int = LINE_SS):
         d.line(sp, fill=rgba(color), width=lw, joint="curve")
         for x, y in (sp[0], sp[-1]):
             d.ellipse((x - lw / 2, y - lw / 2, x + lw / 2, y + lw / 2), fill=rgba(color))
-    return big.reduce(ss) if hasattr(big, "reduce") else big.resize((w, h), Image.LANCZOS)
+    return big.reduce(ss) if hasattr(big, "reduce") else big.resize((w, h), Image.Resampling.LANCZOS)
 
 
 # ── canvas helpers ───────────────────────────────────────────────────────

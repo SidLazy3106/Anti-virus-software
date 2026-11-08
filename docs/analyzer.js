@@ -1,22 +1,14 @@
 // URL risk analysis. Mirrors sentinel/webguard.py so desktop and browser give the same verdicts.
-const BRANDS = ["google","microsoft","paypal","amazon","facebook","instagram","netflix","github","apple",
-  "icloud","outlook","whatsapp","linkedin","dropbox","binance","coinbase","paytm","phonepe","flipkart",
-  "hdfcbank","icicibank","sbi"];
-const OFFICIAL = new Set(["google.com","gstatic.com","googlevideo.com",
-  "microsoft.com","microsoftonline.com","live.com","office.com","paypal.com","amazon.com","amazon.in",
-  "facebook.com","fbcdn.net","instagram.com","netflix.com","github.com",
-  "apple.com","icloud.com","whatsapp.com","linkedin.com","dropbox.com","binance.com","coinbase.com","paytm.com",
-  "phonepe.com","flipkart.com","hdfcbank.com","icicibank.com","sbi.co.in"]);
-const RISKY_TLDS = new Set(["zip","mov","top","xyz","click","tk","ml","ga","cf","gq","work","country","kim",
-  "loan","men","icu","cyou"]);
-const KEYWORDS = ["login","signin","verify","secure","account","update","wallet","password","billing","confirm","suspend"];
-const MULTI = new Set(["co.uk","com.au","co.in","org.in","net.in","ac.in","gov.in","co.jp","com.br","co.za"]);
+// Rule lists and thresholds come from url_rules.js (generated from sentinel/data/url_rules.json and config.py by
+// tools/sync_extension_rules.py), so the desktop app and the browser always use the same data.
+const BRANDS = URL_RULES.brands;
+const OFFICIAL = new Set(URL_RULES.official_domains);
+const RISKY_TLDS = new Set(URL_RULES.risky_tlds);
+const KEYWORDS = URL_RULES.keywords;
+const MULTI = new Set(URL_RULES.multi_part_suffixes);
 // Shared hosting / user-content platforms: anyone can publish here, so brand + keyword checks still apply.
-const USER_CONTENT = new Set(["amazonaws.com","googleapis.com","googleusercontent.com","githubusercontent.com",
-  "windows.net","appspot.com","firebaseapp.com","web.app","github.io","pages.dev","workers.dev","r2.dev",
-  "netlify.app","vercel.app","herokuapp.com","azurewebsites.net","blogspot.com","000webhostapp.com","glitch.me",
-  "wixsite.com","weebly.com","ngrok.io","ngrok-free.app","trycloudflare.com","ipfs.io","dweb.link"]);
-const SUSPICIOUS_AT = 35, MALICIOUS_AT = 70;
+const USER_CONTENT = new Set(URL_RULES.user_content_hosts);
+const SUSPICIOUS_AT = URL_RULES.suspicious_at, MALICIOUS_AT = URL_RULES.malicious_at;
 
 // Host exactly as typed (the URL parser rewrites 3232235777 / 0xC0A80001 to dotted form).
 function rawHostOf(raw) {
@@ -101,7 +93,7 @@ function analyzeUrl(raw, badDomains = []) {
 }
 
 const RISKY_DL_EXT = new Set(["exe","scr","msi","bat","cmd","ps1","vbs","js","jse","hta","lnk","iso","jar","com","pif"]);
-const DECOY_DL = /\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|txt|mp3|mp4|zip)\s*\.(exe|scr|com|pif|bat|cmd|js|vbs|lnk|hta)$/i;
+const DECOY_DL = new RegExp(URL_RULES.double_extension_pattern, "i");
 function analyzeDownload(nameOrUrl) {
   const rawName = (nameOrUrl.split(/[\\/]/).pop() || "").split("?")[0];
   let name = rawName;

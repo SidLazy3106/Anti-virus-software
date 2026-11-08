@@ -3,28 +3,26 @@ from __future__ import annotations
 
 import os
 import queue
-import sys
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import quarantine
-from . import logger
-from .scanner import ENC_CMD, MALICIOUS, RANSOM_EXT, RANSOM_NOTE, SUSPICIOUS, Scanner
+from . import config, logger, quarantine
+from .checks.identity import RANSOM_EXT, RANSOM_NOTE
+from .checks.script import ENC_CMD
+from .scanner import MALICIOUS, SUSPICIOUS, Scanner
 
 try:
     from watchdog.events import FileSystemEventHandler
     from watchdog.observers import Observer
-except ImportError:  # optional until real-time protection is started
-    Observer = None
-    FileSystemEventHandler = object
+except ImportError:  # pragma: no cover - optional until real-time protection is started
+    Observer = None  # type: ignore[assignment,misc]
+    FileSystemEventHandler = object  # type: ignore[assignment,misc]
 
-try:
-    import psutil
-except ImportError:
-    psutil = None
+from .platform_utils import IS_WIN, norm_path, psutil
+from .winconst import FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_NORMAL
 
 
 @dataclass
@@ -47,9 +45,9 @@ class Alert:
 class RansomwareGuard:
     """Decoy (canary) files plus a file-change-rate check."""
 
-    CANARY_NAMES = ("_sentinel_canary.docx", "_sentinel_canary.xlsx")
+    CANARY_NAMES = config.CANARY_NAMES
 
-    def __init__(self, on_alert, window=5.0, limit=60):
+    def __init__(self, on_alert, window=config.RANSOM_WINDOW_SECONDS, limit=config.RANSOM_MODIFIED_LIMIT):
         self.on_alert = on_alert
         self.window, self.limit = window, limit
         self.canaries: set[str] = set()
@@ -57,23 +55,24 @@ class RansomwareGuard:
         self._last_rate_alert = 0.0
         self._ransom_seen: dict = {}
 
-    @staticmethod
-    def _norm(p) -> str:
-        return os.path.normcase(os.path.abspath(str(p)))
-
     def create_canaries(self, folders):
         for folder in folders:
+            for old_name in config.LEGACY_CANARY_NAMES:      # decoys left behind by builds from before the rename
+                try:
+                    (Path(folder) / old_name).unlink(missing_ok=True)
+                except OSError:
+                    pass
             for name in self.CANARY_NAMES:
                 p = Path(folder) / name
                 try:
-                    if sys.platform == "win32" and p.exists():
+                    if IS_WIN and p.exists():
                         import ctypes  # writing over a hidden file fails on Windows; unhide first
-                        ctypes.windll.kernel32.SetFileAttributesW(str(p), 0x80)  # normal
-                    p.write_text("Sentinel canary file. Do not edit. If this changes, something is encrypting your files.\n")
-                    if sys.platform == "win32":
+                        ctypes.windll.kernel32.SetFileAttributesW(str(p), FILE_ATTRIBUTE_NORMAL)
+                    p.write_text(config.CANARY_TEXT)
+                    if IS_WIN:
                         import ctypes
-                        ctypes.windll.kernel32.SetFileAttributesW(str(p), 0x2)  # hidden
-                    self.canaries.add(self._norm(p))
+                        ctypes.windll.kernel32.SetFileAttributesW(str(p), FILE_ATTRIBUTE_HIDDEN)
+                    self.canaries.add(norm_path(p))
                 except OSError:
                     pass
 
@@ -97,16 +96,16 @@ class RansomwareGuard:
             what = "file that looks like a ransom note"
         else:
             return
-        key = (os.path.dirname(self._norm(path)), ext or "note")
+        key = (os.path.dirname(norm_path(path)), ext or "note")
         now = time.time()
-        if now - self._ransom_seen.get(key, 0) < 30:
+        if now - self._ransom_seen.get(key, 0) < config.RANSOM_ALERT_COOLDOWN_SECONDS:
             return
         self._ransom_seen[key] = now
         self.on_alert(Alert("ransomware", "critical", f"Created {what}", str(path)))
 
     def event(self, path, kind):
         self._ransom_indicator(path, kind)
-        n = self._norm(path)
+        n = norm_path(path)
         if n in self.canaries and kind in ("modified", "deleted", "moved"):
             self.on_alert(Alert("ransomware", "critical",
                                 f"Canary file {kind}: possible ransomware activity", str(path)))
@@ -116,7 +115,7 @@ class RansomwareGuard:
             self.events.append(now)
             while self.events and now - self.events[0] > self.window:
                 self.events.popleft()
-            if len(self.events) >= self.limit and now - self._last_rate_alert > 30:
+            if len(self.events) >= self.limit and now - self._last_rate_alert > config.RANSOM_ALERT_COOLDOWN_SECONDS:
                 self._last_rate_alert = now
                 self.on_alert(Alert("ransomware", "warning",
                                     f"{len(self.events)} files modified in {self.window:.0f}s (unusual rate)"))
@@ -145,7 +144,7 @@ class _Handler(FileSystemEventHandler):
 
 
 class RealtimeMonitor:
-    IGNORE_SUFFIX = (".crdownload", ".part", ".partial", ".tmp", ".download")
+    IGNORE_SUFFIX = config.IGNORED_DOWNLOAD_SUFFIXES
 
     def __init__(self, scanner: Scanner, paths, on_alert, auto_quarantine=False, canaries=False):
         self.scanner, self.paths, self.on_alert = scanner, [str(p) for p in paths], on_alert
@@ -178,13 +177,13 @@ class RealtimeMonitor:
 
     def enqueue(self, path, kind):
         self.guard.event(path, kind)
-        if self.guard._norm(path) in self.guard.canaries:
+        if norm_path(path) in self.guard.canaries:
             return
         if path.lower().endswith(self.IGNORE_SUFFIX):
             return
         self._q.put(path)
 
-    def _wait_stable(self, path, tries=20):
+    def _wait_stable(self, path, tries=config.FILE_STABLE_CHECKS):
         last = -1
         for _ in range(tries):
             try:
@@ -194,7 +193,7 @@ class RealtimeMonitor:
             if size == last:
                 return True
             last = size
-            time.sleep(0.5)
+            time.sleep(config.FILE_STABLE_INTERVAL_SECONDS)
         return False
 
     def _run(self):
@@ -243,7 +242,7 @@ def _stem(name: str) -> str:
 class ProcessWatcher:
     """Polls for new processes and flags suspicious parent/child chains and risky launches."""
 
-    def __init__(self, on_alert, interval=1.0, scanner=None):
+    def __init__(self, on_alert, interval=config.PROCESS_POLL_SECONDS, scanner=None):
         self.on_alert, self.interval, self.scanner = on_alert, interval, scanner
         self._scanned: set = set()
         self._stop = threading.Event()

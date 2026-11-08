@@ -7,10 +7,9 @@ write for normal reasons (the "downloaded from the internet" mark and similar) a
 from __future__ import annotations
 
 import ctypes
-import sys
 from ctypes import wintypes
 
-IS_WIN = sys.platform == "win32"
+from .platform_utils import IS_WIN
 BENIGN = {"zone.identifier", "smartscreen", "com.dropbox.attrs", "com.dropbox.attributes", "encryptable",
           "afp_afpinfo", "afp_resource", "ms-properties", "{4c8cc155-6c1e-11d1-8e41-00c04fb9386d}"}
 _INVALID = ctypes.c_void_p(-1).value
@@ -36,7 +35,7 @@ def _api():
     return _k32
 
 
-def list_streams(path) -> list:
+def list_streams(path) -> list[tuple[str, int]]:
     """[(name, size)] of the file's named streams, excluding the main stream. [] when there are none or on error."""
     if not IS_WIN:
         return []
@@ -60,6 +59,6 @@ def list_streams(path) -> list:
     return out
 
 
-def suspicious_streams(path) -> list:
+def suspicious_streams(path) -> list[tuple[str, int]]:
     """Named, non-empty streams that are not on the benign list."""
     return [(n, s) for n, s in list_streams(path) if s > 0 and n.lower() not in BENIGN]

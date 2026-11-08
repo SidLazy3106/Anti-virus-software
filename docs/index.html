@@ -3,97 +3,350 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>X-Secure: a Windows security suite built in Python</title>
-<meta name="description" content="X-Secure: file scanner, real-time protection, browser guard, system audit and a safe PC optimizer. Python, Tkinter, Windows APIs.">
+<title>X-Secure: antivirus protection and a safe PC optimizer for Windows</title>
+<meta name="description" content="X-Secure is a Windows desktop app that scans for threats, watches your folders in real time, checks links and downloads, audits your PC's security settings and tunes performance with reversible changes.">
+<meta name="theme-color" content="#0A0F1F">
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("xs-theme")||"dark"}catch(e){document.documentElement.dataset.theme="dark"}</script>
+<link rel="icon" href="img/home.png">
 <style>
   :root {
-    --bg:#0A0F1F; --surface:#131B33; --surface2:#1A2442; --border:#222D52; --text:#EEF2FF; --muted:#98A4C7;
-    --faint:#63708F; --primary:#5B8CFF; --success:#34D399; --warning:#FBBF24; --danger:#FB7185; --accent:#8B6CFF;
+    --bg:#0A0F1F; --bg2:#0D1326; --surface:#131B33; --surface2:#1A2442; --surface3:#26335E; --border:#222D52;
+    --text:#EEF2FF; --muted:#98A4C7; --faint:#7E8BAE; --primary:#5B8CFF; --accent:#8B6CFF;
+    --success:#34D399; --warning:#FBBF24; --danger:#FB7185; --on-primary:#fff; --glow:rgba(91,140,255,.22);
+    --radius:16px;
   }
-  @media (prefers-color-scheme: light) {
-    :root { --bg:#F5F7FD; --surface:#FFFFFF; --surface2:#EEF2FC; --border:#DCE3F4; --text:#0E1630; --muted:#4A5675; --faint:#7A86A6; }
-  }
+  :root[data-theme="light"] {
+    color-scheme:light; --bg:#F5F7FD; --bg2:#EBEFFA; --surface:#FFFFFF; --surface2:#EEF2FC; --surface3:#DCE3F4; --border:#D5DDF1;
+            --text:#0E1630; --muted:#4A5675; --faint:#5E6B8C; --glow:rgba(91,140,255,.16); }
+  :root:not([data-theme="light"]) { color-scheme:dark; }
+  .theme { background:var(--surface2); border:1px solid var(--border); color:var(--text); width:38px; height:38px; border-radius:10px; cursor:pointer; font-size:17px; line-height:1; }
+  .theme:hover { border-color:var(--primary); }
   * { box-sizing:border-box; }
-  html { scroll-behavior:smooth; }
-  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif; }
+  html { scroll-behavior:smooth; scroll-padding-top:76px; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.65 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+         -webkit-font-smoothing:antialiased; overflow-x:hidden; }
   a { color:var(--primary); }
-  .wrap { max-width:1060px; margin:0 auto; padding:0 20px; }
-  header.hero { padding:72px 0 40px; }
-  .eyebrow { color:var(--primary); font-weight:600; letter-spacing:.08em; text-transform:uppercase; font-size:13px; }
-  h1 { font-size:clamp(34px,6vw,56px); line-height:1.1; margin:10px 0 14px; letter-spacing:-.02em; }
-  .lead { color:var(--muted); font-size:19px; max-width:720px; margin:0 0 26px; }
-  .btns { display:flex; flex-wrap:wrap; gap:10px; }
-  .btn { display:inline-block; padding:11px 20px; border-radius:12px; font-weight:600; text-decoration:none; background:var(--primary); color:#fff; border:1px solid transparent; }
-  .btn.secondary { background:var(--surface2); color:var(--text); border-color:var(--border); }
+  img { max-width:100%; }
+  .wrap { max-width:1120px; margin:0 auto; padding:0 22px; }
+  .skip { position:absolute; left:-999px; top:8px; background:var(--primary); color:#fff; padding:8px 14px; border-radius:8px; z-index:99; }
+  .skip:focus { left:8px; }
+
+  /* ── navigation ── */
+  nav.top { position:sticky; top:0; z-index:50; backdrop-filter:blur(14px); background:color-mix(in srgb,var(--bg) 80%,transparent);
+            border-bottom:1px solid color-mix(in srgb,var(--border) 70%,transparent); }
+  nav.top .wrap { display:flex; align-items:center; gap:18px; height:60px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:18px; color:var(--text); text-decoration:none; letter-spacing:-.01em; }
+  .brand svg { width:26px; height:26px; }
+  nav.top .links { display:flex; gap:4px; margin-left:auto; overflow-x:auto; scrollbar-width:none; }
+  nav.top .links a { color:var(--muted); text-decoration:none; font-size:14.5px; padding:8px 11px; border-radius:9px; white-space:nowrap; }
+  nav.top .links a:hover, nav.top .links a.on { color:var(--text); background:var(--surface2); }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:12px 22px; border-radius:12px; font:inherit; font-weight:600;
+         text-decoration:none; background:linear-gradient(135deg,var(--primary),var(--accent)); color:var(--on-primary); border:1px solid transparent;
+         cursor:pointer; transition:transform .15s ease, box-shadow .2s ease, filter .2s; box-shadow:0 8px 28px var(--glow); }
+  .btn:hover { transform:translateY(-2px); filter:brightness(1.08); }
+  .btn:active { transform:translateY(0); }
+  .btn.secondary { background:var(--surface2); color:var(--text); border-color:var(--border); box-shadow:none; }
+  .btn.small { padding:8px 16px; font-size:14px; }
+  .btn[aria-disabled="true"] { opacity:.55; cursor:not-allowed; transform:none; filter:none; box-shadow:none; pointer-events:none; }
+  .btn:focus-visible, a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
   .btn[hidden] { display:none; }
-  .hero-img { margin-top:38px; border-radius:16px; border:1px solid var(--border); box-shadow:0 24px 70px rgba(0,0,0,.35); width:100%; height:auto; display:block; }
-  section { padding:44px 0; }
-  h2 { font-size:28px; margin:0 0 8px; letter-spacing:-.01em; }
-  .sub { color:var(--muted); margin:0 0 24px; max-width:760px; }
+
+  /* ── hero ── */
+  header.hero { position:relative; padding:78px 0 60px; isolation:isolate; overflow:hidden; }
+  header.hero::before { content:""; position:absolute; inset:-30% -10% auto -10%; height:90%; z-index:-1;
+    background:radial-gradient(60% 60% at 25% 20%,var(--glow),transparent 70%), radial-gradient(50% 50% at 85% 10%,rgba(139,108,255,.18),transparent 70%); }
+  header.hero::after { content:""; position:absolute; inset:0; z-index:-1; opacity:.5;
+    background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);
+    background-size:56px 56px; mask-image:radial-gradient(70% 60% at 50% 0%,#000,transparent 75%); -webkit-mask-image:radial-gradient(70% 60% at 50% 0%,#000,transparent 75%); }
+  .hero-grid { display:grid; grid-template-columns:1.05fr 1fr; gap:46px; align-items:center; }
+  .eyebrow { color:var(--primary); font-weight:700; letter-spacing:.1em; text-transform:uppercase; font-size:12.5px; }
+  h1 { font-size:clamp(36px,5.6vw,60px); line-height:1.06; margin:12px 0 16px; letter-spacing:-.03em; }
+  h1 em { font-style:normal; background:linear-gradient(135deg,var(--primary),var(--accent)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .lead { color:var(--muted); font-size:19px; max-width:560px; margin:0 0 26px; }
+  .btns { display:flex; flex-wrap:wrap; gap:12px; }
+  .meta { color:var(--faint); font-size:13.5px; margin-top:16px; }
+  .meta b { color:var(--muted); font-weight:600; }
+
+  /* dashboard preview (hero) */
+  .dash { background:linear-gradient(180deg,var(--surface),var(--bg2)); border:1px solid var(--border); border-radius:20px; padding:18px;
+          box-shadow:0 30px 80px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03) inset; position:relative; }
+  .dash .tag { position:absolute; top:-12px; right:16px; background:var(--surface3); color:var(--text); font-size:12px; padding:3px 11px; border-radius:99px; border:1px solid var(--border); }
+  .dash-top { display:flex; align-items:center; gap:18px; }
+  .ring { width:112px; height:112px; flex:none; position:relative; }
+  .ring svg { width:100%; height:100%; transform:rotate(-90deg); }
+  .ring circle { fill:none; stroke-width:11; stroke-linecap:round; }
+  .ring .track { stroke:var(--surface3); }
+  .ring .val { stroke:var(--success); stroke-dasharray:314; stroke-dashoffset:314; transition:stroke-dashoffset 1.6s cubic-bezier(.2,.8,.2,1); }
+  .ring .num { position:absolute; inset:0; display:grid; place-items:center; text-align:center; line-height:1.1; }
+  .ring .num b { font-size:30px; font-variant-numeric:tabular-nums; }
+  .ring .num span { font-size:10.5px; color:var(--muted); display:block; }
+  .dash h3 { margin:0; font-size:19px; }
+  .dash p { margin:4px 0 0; color:var(--muted); font-size:14px; }
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin:16px 0; }
+  .tile { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:10px 11px; }
+  .tile small { color:var(--faint); display:block; font-size:11.5px; }
+  .tile b { font-size:14px; }
+  .ok { color:var(--success); } .warn { color:var(--warning); } .bad { color:var(--danger); }
+  .log { background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:10px 12px; font:12.5px/1.7 Consolas,"Cascadia Mono",monospace; height:112px; overflow:hidden; color:var(--muted); }
+  .log div { white-space:nowrap; text-overflow:ellipsis; overflow:hidden; animation:slide .4s ease both; }
+  @keyframes slide { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+  .meters { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:12px; }
+  .meter small { display:flex; justify-content:space-between; color:var(--faint); font-size:11.5px; }
+  .meter i { display:block; height:6px; border-radius:9px; background:var(--surface3); margin-top:4px; overflow:hidden; }
+  .meter i s { display:block; height:100%; width:0; background:var(--primary); border-radius:9px; transition:width 1.2s ease; text-decoration:none; }
+
+  /* ── sections ── */
+  section { padding:72px 0; position:relative; }
+  section.alt { background:linear-gradient(180deg,transparent,var(--bg2) 20%,var(--bg2) 80%,transparent); }
+  h2 { font-size:clamp(26px,3.6vw,38px); margin:0 0 10px; letter-spacing:-.02em; line-height:1.15; }
+  .sub { color:var(--muted); margin:0 0 34px; max-width:720px; font-size:17px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px; transition:border-color .2s, transform .2s; }
+  .card:hover { border-color:color-mix(in srgb,var(--primary) 50%,var(--border)); }
+  .card h3 { margin:0 0 6px; font-size:17.5px; } .card p { margin:0; color:var(--muted); font-size:15px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr)); gap:16px; }
+  .icon { width:42px; height:42px; border-radius:12px; display:grid; place-items:center; margin-bottom:14px;
+          background:color-mix(in srgb,var(--c,var(--primary)) 16%,transparent); color:var(--c,var(--primary)); }
+  .icon svg { width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .reveal { opacity:0; transform:translateY(22px); transition:opacity .7s ease, transform .7s ease; }
+  .reveal.in { opacity:1; transform:none; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:34px; align-items:center; }
+  .pill { display:inline-block; font-size:12px; padding:2px 10px; border-radius:99px; background:var(--surface2); border:1px solid var(--border); color:var(--muted); }
+
+  /* overview diagram */
+  .duo { display:grid; grid-template-columns:1fr auto 1fr; gap:14px; align-items:stretch; }
+  .duo .join { align-self:center; width:44px; height:44px; border-radius:50%; background:var(--surface2); border:1px solid var(--border); display:grid; place-items:center; color:var(--primary); font-weight:700; }
+  .duo ul, .check { margin:12px 0 0; padding:0; list-style:none; color:var(--muted); font-size:15px; }
+  .duo li, .check li { padding-left:24px; position:relative; margin:7px 0; }
+  .duo li::before, .check li::before { content:""; position:absolute; left:2px; top:.62em; width:11px; height:6px; border-left:2px solid var(--success); border-bottom:2px solid var(--success); transform:rotate(-45deg) translateY(-50%); }
+
+  /* protection walkthrough */
+  .steps { display:grid; grid-template-columns:260px 1fr; gap:22px; }
+  .steps > *, .two > *, .dl-grid > *, .hero-grid > *, .duo > * { min-width:0; }   /* let grid cells shrink instead of overflowing on phones */
+  .steplist { display:flex; flex-direction:column; gap:8px; }
+  .step { text-align:left; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 14px; cursor:pointer; color:var(--muted); font:inherit; display:flex; gap:12px; align-items:center; transition:all .2s; }
+  .step b { width:28px; height:28px; border-radius:50%; display:grid; place-items:center; background:var(--surface2); color:var(--text); font-size:13px; flex:none; }
+  .step.on { border-color:var(--primary); color:var(--text); background:var(--surface2); box-shadow:0 0 0 3px var(--glow); }
+  .step.on b { background:var(--primary); color:#fff; }
+  .stage { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; min-height:330px; position:relative; }
+  .stage h3 { margin:0 0 6px; font-size:21px; } .stage > p { color:var(--muted); margin:0 0 16px; }
+  .stage .demo { background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:14px; font:13px/1.8 Consolas,"Cascadia Mono",monospace; min-height:132px; overflow:hidden; }
+  .stage .demo div { animation:slide .35s ease both; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bar { height:8px; border-radius:99px; background:var(--surface2); margin:12px 0; overflow:hidden; }
+  .bar i { display:block; height:100%; border-radius:99px; width:0; background:linear-gradient(90deg,var(--primary),var(--accent)); transition:width .35s ease; }
+  .stage .note, .note { color:var(--faint); font-size:13px; margin-top:12px; }
+  .controls { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+
+  /* modes */
+  .modes { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr)); gap:14px; margin-bottom:18px; }
+  .mode { text-align:left; font:inherit; color:var(--text); cursor:pointer; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; transition:all .2s; }
+  .mode:hover { transform:translateY(-3px); }
+  .mode[aria-pressed="true"] { border-color:var(--mc); box-shadow:0 0 0 3px color-mix(in srgb,var(--mc) 22%,transparent); }
+  .mode h3 { margin:10px 0 4px; font-size:18px; } .mode p { margin:0; color:var(--muted); font-size:14.5px; }
+  .mode .dot { width:12px; height:12px; border-radius:50%; background:var(--mc); display:inline-block; box-shadow:0 0 14px var(--mc); }
+  .modepanel { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px; }
+  .modepanel svg { width:100%; height:auto; display:block; }
+  .legend { display:flex; gap:18px; flex-wrap:wrap; font-size:13.5px; color:var(--muted); margin-top:8px; }
+  .legend i { display:inline-block; width:12px; height:4px; border-radius:4px; margin-right:7px; vertical-align:middle; }
+  .illus { border-left:3px solid var(--warning); padding:6px 12px; background:color-mix(in srgb,var(--warning) 9%,transparent); border-radius:0 8px 8px 0; font-size:13.5px; color:var(--muted); margin-top:14px; }
+
+  /* screenshots */
+  .shots { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr)); gap:20px; }
+  figure { margin:0; } figure img { width:100%; height:auto; border-radius:12px; border:1px solid var(--border); display:block; box-shadow:0 18px 50px rgba(0,0,0,.28); }
+  figcaption { color:var(--muted); font-size:14px; margin-top:9px; }
   .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; }
-  .card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px; }
-  .stat b { display:block; font-size:30px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
-  .stat span { color:var(--muted); font-size:14px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr)); gap:14px; }
-  .card h3 { margin:0 0 6px; font-size:17px; }
-  .card p { margin:0; color:var(--muted); font-size:15px; }
-  .shots { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr)); gap:18px; }
-  figure { margin:0; }
-  figure img { width:100%; height:auto; border-radius:12px; border:1px solid var(--border); display:block; }
-  figcaption { color:var(--muted); font-size:14px; margin-top:8px; }
-  .checker { background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:22px; }
+  .stat b { display:block; font-size:30px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; } .stat span { color:var(--muted); font-size:14px; }
+
+  /* link checker */
+  .checker { background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:24px; }
   .row { display:flex; gap:10px; flex-wrap:wrap; }
-  input[type=text] { flex:1 1 220px; min-width:0; padding:13px 15px; border-radius:12px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font:inherit; }
-  input[type=text]:focus-visible, .btn:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
-  button.btn { cursor:pointer; font:inherit; font-weight:600; }
+  input[type=text] { flex:1 1 240px; min-width:0; padding:13px 15px; border-radius:12px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font:inherit; }
   .tries { margin:12px 0 0; font-size:14px; color:var(--muted); }
   .tries button { background:none; border:0; color:var(--primary); cursor:pointer; font:inherit; padding:2px 6px; text-decoration:underline; }
   #result { margin-top:18px; min-height:24px; }
   .verdict { display:flex; align-items:center; gap:12px; font-size:20px; font-weight:700; }
-  .dot { width:12px; height:12px; border-radius:50%; flex:none; }
-  .clean .dot { background:var(--success); } .suspicious .dot { background:var(--warning); } .malicious .dot { background:var(--danger); }
+  .vdot { width:12px; height:12px; border-radius:50%; flex:none; }
+  .clean .vdot { background:var(--success); } .suspicious .vdot { background:var(--warning); } .malicious .vdot { background:var(--danger); }
   .clean { color:var(--success); } .suspicious { color:var(--warning); } .malicious { color:var(--danger); }
-  .bar { height:8px; border-radius:99px; background:var(--surface2); margin:12px 0; overflow:hidden; }
-  .bar i { display:block; height:100%; border-radius:99px; transition:width .35s ease; }
   #result ul { margin:8px 0 0; padding-left:20px; color:var(--text); }
-  .note { color:var(--faint); font-size:13px; margin-top:12px; }
+
+  /* download */
+  .dl { background:linear-gradient(135deg,color-mix(in srgb,var(--primary) 14%,var(--surface)),var(--surface)); border:1px solid color-mix(in srgb,var(--primary) 40%,var(--border)); border-radius:22px; padding:30px; }
+  .dl-grid { display:grid; grid-template-columns:1.1fr 1fr; gap:30px; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:6px 16px; margin:14px 0; font-size:14.5px; }
+  .kv dt { color:var(--faint); } .kv dd { margin:0; word-break:break-all; }
+  code { background:var(--surface2); padding:2px 7px; border-radius:6px; font-size:.9em; }
+  ol.install { padding-left:20px; color:var(--muted); } ol.install li { margin:8px 0; }
   details { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 18px; margin-bottom:10px; }
-  summary { cursor:pointer; font-weight:600; }
-  details p { color:var(--muted); margin:10px 0 0; }
-  footer { border-top:1px solid var(--border); padding:30px 0 60px; color:var(--faint); font-size:14px; }
-  code { background:var(--surface2); padding:2px 6px; border-radius:6px; font-size:.92em; }
-  @media (max-width:520px) { .shots { grid-template-columns:1fr; } header.hero { padding-top:44px; } }
-  @media (prefers-reduced-motion: reduce) { html { scroll-behavior:auto; } .bar i { transition:none; } }
+  summary { cursor:pointer; font-weight:600; } details p, details ul { color:var(--muted); margin:10px 0 0; }
+  footer { border-top:1px solid var(--border); padding:44px 0 60px; color:var(--faint); font-size:14px; }
+  footer .cols { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:30px; }
+  footer h4 { color:var(--text); margin:0 0 10px; font-size:14px; } footer a { display:block; color:var(--muted); text-decoration:none; padding:3px 0; } footer a:hover { color:var(--primary); }
+
+  @media (max-width:900px) {
+    .hero-grid, .two, .steps, .dl-grid { grid-template-columns:1fr; }
+    .steplist { flex-direction:row; overflow-x:auto; } .step { flex:none; } .step span { display:none; } .step.on span { display:inline; }
+    .duo { grid-template-columns:1fr; } .duo .join { margin:0 auto; }
+    footer .cols { grid-template-columns:1fr 1fr; }
+    nav.top .links a.hide-s { display:none; }
+  }
+  @media (max-width:560px) { header.hero { padding-top:44px; } .tiles { grid-template-columns:repeat(2,1fr); } section { padding:52px 0; } .dash-top { flex-direction:column; align-items:flex-start; } }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior:auto; } *, *::before, *::after { animation:none !important; transition:none !important; }
+    .reveal { opacity:1; transform:none; }
+  }
 </style>
 </head>
 <body>
-<header class="hero"><div class="wrap">
-  <div class="eyebrow">Python · Tkinter · Windows APIs</div>
-  <h1>X-Secure</h1>
-  <p class="lead">A Windows security suite I built from scratch: a parallel file scanner, real-time protection, a browser guard that hands downloads to the desktop engine, a system health audit, and a PC optimizer that never changes anything without asking and can undo everything it does.</p>
-  <div class="btns">
-    <a class="btn" href="#try">Try the link checker</a>
-    <a class="btn secondary" id="repoBtn" href="#" hidden>View source on GitHub</a>
-    <a class="btn secondary" id="relBtn" href="#" hidden>Download for Windows</a>
+<a class="skip" href="#main">Skip to content</a>
+
+<nav class="top" aria-label="Main">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="X-Secure home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B8CFF"/><stop offset="1" stop-color="#8B6CFF"/></linearGradient></defs>
+        <path d="M16 2.5 5 6.5v8.2c0 7 4.6 12.2 11 14.8 6.4-2.6 11-7.8 11-14.8V6.5L16 2.5Z" fill="url(#lg)"/><path d="m11 16.2 3.6 3.6 6.6-7" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      X-Secure
+    </a>
+    <div class="links">
+      <a href="#overview" class="hide-s">Overview</a><a href="#how">How it works</a><a href="#modes">Modes</a>
+      <a href="#dashboard" class="hide-s">Dashboard</a><a href="#features" class="hide-s">Features</a><a href="#trust">Trust</a><a href="#try" class="hide-s">Link checker</a>
+    </div>
+    <button class="theme" id="themeBtn" type="button" aria-label="Switch between dark and light theme" title="Dark / light">&#9788;</button>
+    <a class="btn small" href="#download">Download</a>
   </div>
-  <img class="hero-img" src="img/home.png" alt="X-Secure home screen showing the protection level ring and four status cards" width="1551" height="941">
+</nav>
+
+<main id="main">
+<header class="hero" id="top"><div class="wrap hero-grid">
+  <div>
+    <div class="eyebrow">Antivirus &middot; Real-time shield &middot; Safe PC optimizer</div>
+    <h1>Protection you can <em>see</em>, tuning you can <em>undo</em>.</h1>
+    <p class="lead">X-Secure is a Windows desktop app that scans for threats, watches your folders as files change, checks links and downloads, audits your security settings, and speeds up your PC only with changes you approve and can roll back.</p>
+    <div class="btns">
+      <a class="btn" href="#download">Download for Windows</a>
+      <a class="btn secondary" href="#features">Explore features</a>
+    </div>
+    <p class="meta"><b>Windows 10 &amp; 11</b> (64-bit) &middot; version <b class="js-version">1.0.0</b> &middot; free and open source (MIT) &middot; no account, no cloud upload of your files</p>
+  </div>
+
+  <div class="dash reveal" aria-label="Animated preview of the X-Secure dashboard, using sample data">
+    <span class="tag">Sample data</span>
+    <div class="dash-top">
+      <div class="ring" role="img" aria-label="Protection level 86 out of 100 (sample)">
+        <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="50"/><circle class="val" id="ringVal" cx="60" cy="60" r="50"/></svg>
+        <div class="num"><div><b id="ringNum">0</b><span>protection level</span></div></div>
+      </div>
+      <div><h3>You're protected</h3><p>Everything looks good. Keep Windows updated and scan now and then.</p></div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><small>Virus &amp; malware</small><b class="ok">No threats</b></div>
+      <div class="tile"><small>Real-time shield</small><b class="ok">Active</b></div>
+      <div class="tile"><small>Web protection</small><b class="ok">Ready</b></div>
+      <div class="tile"><small>System health</small><b class="warn">86 / 100</b></div>
+    </div>
+    <div class="log" id="heroLog" aria-hidden="true"></div>
+    <div class="meters" aria-hidden="true">
+      <div class="meter"><small><span>CPU</span><span id="mCpu">0%</span></small><i><s id="bCpu"></s></i></div>
+      <div class="meter"><small><span>Memory</span><span id="mRam">0%</span></small><i><s id="bRam"></s></i></div>
+      <div class="meter"><small><span>Disk</span><span id="mDisk">0%</span></small><i><s id="bDisk"></s></i></div>
+    </div>
+  </div>
 </div></header>
 
-<section><div class="wrap">
-  <h2>Measured, not claimed</h2>
-  <p class="sub">Numbers from the project's own benchmark and tests, run on my development PC (Windows 11, Ryzen 7 4800H). Detection samples are harmless synthetic files, one per technique, so this shows each detection works, not how well it does against malware in the wild.</p>
-  <div class="stats">
-    <div class="card stat"><b>0 / 20,000</b><span>clean Windows and Program Files binaries flagged (false-positive rate 0.000%)</span></div>
-    <div class="card stat"><b>10 / 10</b><span>harmless test samples detected, one per detection technique</span></div>
-    <div class="card stat"><b>162,903</b><span>live malicious and phishing domains from public threat feeds</span></div>
-    <div class="card stat"><b>95</b><span>automated tests, including real-process and real-registry checks</span></div>
+<section id="overview"><div class="wrap">
+  <h2 class="reveal">One app for safety and speed</h2>
+  <p class="sub reveal">Security software and PC "boosters" usually live in separate programs that can work against each other. X-Secure keeps them together, with one rule across both: nothing risky happens without telling you first.</p>
+  <div class="duo reveal">
+    <div class="card"><div class="icon" style="--c:var(--primary)"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.2 7.6 8 9 4.8-1.4 8-4.5 8-9V6l-8-3Z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg></div>
+      <h3>Antivirus protection</h3><ul><li>Quick, full and custom file scans</li><li>Real-time folder and process watching</li><li>Link and download checks (with a browser extension)</li><li>Encrypted quarantine you can restore from</li><li>A security health check with a plain-English score</li></ul></div>
+    <div class="join" aria-hidden="true">+</div>
+    <div class="card"><div class="icon" style="--c:var(--accent)"><svg viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/><circle cx="12" cy="16" r="1.2"/></svg></div>
+      <h3>PC optimizer</h3><ul><li>Detects your real hardware and adapts its advice</li><li>Four performance modes built on Windows power plans</li><li>Explained recommendations; you approve each one</li><li>Every supported change can be rolled back</li><li>Real before/after measurements, never invented ones</li></ul></div>
+  </div>
+</div></section>
+
+<section id="how" class="alt"><div class="wrap">
+  <h2 class="reveal">How protection works</h2>
+  <p class="sub reveal">Step through a scan. The file names below are a made-up sample so you can follow the idea; the steps themselves are what the app really does.</p>
+  <div class="steps reveal">
+    <div class="steplist" role="tablist" aria-label="Scan steps" id="stepList"></div>
+    <div class="stage" id="stage" role="tabpanel" aria-live="polite"></div>
+  </div>
+</div></section>
+
+<section id="modes"><div class="wrap">
+  <h2 class="reveal">Performance modes</h2>
+  <p class="sub reveal">Each mode switches the Windows power plan, shows you exactly what will change first, checks that Windows accepted it, and keeps a rollback. Pick one to see what it is designed to prioritize.</p>
+  <div class="modes reveal" id="modeButtons" role="group" aria-label="Choose a mode"></div>
+  <div class="modepanel reveal">
+    <svg viewBox="0 0 720 250" id="modeSvg" role="img" aria-label="Illustration of the selected mode's intended behavior"><g id="modeGrid"></g><g id="modeLines"></g></svg>
+    <div class="legend" id="modeLegend"></div>
+    <div class="illus"><b>Illustration of intended behavior</b>, not measured FPS, battery life or any benchmark. Real measurements of your own PC appear only on the app's Analytics page.</div>
+  </div>
+</div></section>
+
+<section id="dashboard" class="alt"><div class="wrap">
+  <h2 class="reveal">Inside the app</h2>
+  <p class="sub reveal">A dark, rounded desktop UI with antialiased graphs, keyboard navigation and plain-English results.</p>
+  <p class="note reveal" style="margin:-14px 0 22px">About these screenshots: the Home and Scan screens show <b>sample data</b> (example files and a pre-filled scan summary). The hardware details, memory use and the Analytics numbers are real readings from the development PC. Nothing here is a mock-up of a feature that does not exist.</p>
+  <div class="shots">
+    <figure class="reveal"><img src="img/home.png" alt="X-Secure home screen with the protection level ring and four status cards" width="1551" height="941"><figcaption>Home (sample data): one protection level and one obvious next step.</figcaption></figure>
+    <figure class="reveal"><img loading="lazy" src="img/scan.png" alt="Scan page with quick, full and custom scans and a results table" width="1551" height="941"><figcaption>Scan (sample results): quick, full-PC and custom, with the reason each file was flagged.</figcaption></figure>
+    <figure class="reveal"><img loading="lazy" src="img/optimizer.png" alt="PC optimizer showing detected hardware and four performance modes" width="1551" height="941"><figcaption>PC optimizer: detected hardware, four modes, explained recommendations.</figcaption></figure>
+    <figure class="reveal"><img loading="lazy" src="img/mode.png" alt="Gaming mode switch animation showing a conceptual graph" width="1551" height="941"><figcaption>Mode switch: a labelled illustration; success is shown only after Windows confirms the change.</figcaption></figure>
+    <figure class="reveal"><img loading="lazy" src="img/analytics.png" alt="Performance analytics page comparing measured CPU use between modes" width="1551" height="941"><figcaption>Performance Analytics: opt-in, real measurements per mode with sample counts.</figcaption></figure>
+    <figure class="reveal"><img loading="lazy" src="img/web.png" alt="Web guard page flagging a phishing link as dangerous" width="1551" height="941"><figcaption>Web guard: the same link checker you can try below.</figcaption></figure>
+  </div>
+  <div class="stats reveal" style="margin-top:34px">
+    <div class="card stat"><b>0 / 20,000</b><span>clean Windows and Program Files binaries flagged in the project's own benchmark (development PC)</span></div>
+    <div class="card stat"><b>10 / 10</b><span>harmless synthetic samples detected, one per detection technique</span></div>
+    <div class="card stat"><b>~163,000</b><span>malicious and phishing domains in the downloadable threat lists</span></div>
+    <div class="card stat"><b>460+</b><span>automated tests; 100% of statements covered</span></div>
+  </div>
+  <p class="note">The benchmark uses synthetic samples and a clean corpus on one machine. It shows each technique works and the false-positive rate on common Windows files. It is not an independent detection-rate test.</p>
+</div></section>
+
+<section id="features"><div class="wrap">
+  <h2 class="reveal">Features</h2>
+  <p class="sub reveal">Everything listed here is implemented in the current release.</p>
+  <div class="grid">
+    <div class="card reveal"><div class="icon" style="--c:var(--primary)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg></div><h3>Quick, full &amp; custom scans</h3><p>High-risk folders first, every fixed drive for a full scan, or any file or folder you pick. Parallel workers at low priority, a cache that skips unchanged files, and safe handling of symlinks and cloud-only files.</p></div>
+    <div class="card reveal"><div class="icon" style="--c:var(--accent)"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.2 7.6 8 9 4.8-1.4 8-4.5 8-9V6l-8-3Z"/></svg></div><h3>Real-time shield</h3><p>Watches folders you choose, plants ransomware decoy files, flags mass file changes and suspicious program chains (like Word starting PowerShell). It reacts after a file appears; it cannot block a program before it starts.</p></div>
+    <div class="card reveal"><div class="icon" style="--c:var(--danger)"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div><h3>Encrypted quarantine</h3><p>Flagged files are encrypted with Windows DPAPI and bound to their own id. Restore or delete them from the Quarantine page. Nothing is deleted automatically.</p></div>
+    <div class="card reveal"><div class="icon" style="--c:var(--success)"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 18.7l1-1"/></svg></div><h3>Link &amp; download checks</h3><p>Look-alike domains, disguised IPs, risky endings and a list of known-bad domains. A Chrome/Edge extension hands each finished download to the desktop scanner.</p></div>
+    <div class="card reveal"><div class="icon" style="--c:var(--warning)"><svg viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/></svg></div><h3>System optimization</h3><p>Four modes plus explained recommendations: startup items, background apps, old temp files and power settings. Only per-user switches that Windows itself provides are used.</p></div>
+    <div class="card reveal"><div class="icon" style="--c:var(--primary)"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div><h3>Hardware-aware advice</h3><p>Detects CPU, GPU and video memory, RAM, storage type and health, laptop or desktop and battery, and only suggests what matches your machine.</p></div>
+    <div class="card reveal"><div class="icon" style="--c:var(--accent)"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg></div><h3>Performance analytics</h3><p>Opt-in, saved only on your PC. Records CPU, memory, processes, disk and latency per mode, compares runs on the same hardware, and shows "not available" instead of guessing.</p></div>
+    <div class="card reveal"><div class="icon" style="--c:var(--success)"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 4v4h4"/></svg></div><h3>Rollback</h3><p>Every change the optimizer makes is recorded with its original value. "Restore previous settings" puts it all back, and only reports success after Windows confirms it.</p></div>
+    <div class="card reveal"><div class="icon" style="--c:var(--warning)"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg></div><h3>Security health check &amp; schedule</h3><p>Reviews the firewall, Defender, startup entries, scheduled tasks and more with a 0-100 score and a fix for each finding. Automatic daily or weekly scans use Windows Task Scheduler without admin rights.</p></div>
+  </div>
+</div></section>
+
+<section id="trust" class="alt"><div class="wrap">
+  <h2 class="reveal">Technology &amp; trust</h2>
+  <div class="two">
+    <div class="reveal">
+      <p class="sub" style="margin-bottom:16px">X-Secure is written in Python with a Tkinter interface and packaged as a Windows executable. It uses Windows' own APIs where they are the right tool.</p>
+      <ul class="check">
+        <li><b>Detection:</b> SHA-256 blocklist, entropy and PE-structure heuristics, script and encoded-PowerShell analysis, archive and Office-macro inspection, ransomware indicators, hidden NTFS streams, optional YARA rules.</li>
+        <li><b>Signatures:</b> program signatures are verified by Windows (WinVerifyTrust, offline) and only soften program-structure heuristics.</li>
+        <li><b>Privacy:</b> files are scanned on your PC and are never uploaded. Settings, quarantine and logs stay in <code>%USERPROFILE%\.x-secure</code>. The only network use is downloading public threat lists when you run an update.</li>
+        <li><b>Supported Windows:</b> Windows 10 and Windows 11, 64-bit.</li>
+        <li><b>Permissions:</b> runs as a normal user; it never turns off Defender or the firewall and never silently changes security settings.</li>
+      </ul>
+    </div>
+    <div class="reveal">
+      <details open><summary>It is a user-mode app, not a replacement for Microsoft Defender</summary><p>It can detect and react but cannot block a program before it starts; that needs a signed kernel driver. Heuristics miss novel malware and can raise false alarms. Keep Windows Security turned on.</p></details>
+      <details><summary>No independent certification</summary><p>X-Secure has not been tested or certified by an independent antivirus lab, and this site makes no detection-rate claim beyond the project's own benchmark shown above.</p></details>
+      <details><summary>Anything running as you can reach its data</summary><p>The allowlist, cache and quarantine live in your user profile. Malware running with your privileges could tamper with them; protecting against that needs a SYSTEM service.</p></details>
+      <details><summary>The build is not code-signed</summary><p>Windows SmartScreen may warn on first run. Compare the SHA-256 shown in the Download section with your file, or build it yourself from source.</p></details>
+    </div>
   </div>
 </div></section>
 
 <section id="try"><div class="wrap">
-  <h2>Try the link checker</h2>
-  <p class="sub">This is the same JavaScript engine that runs in the X-Secure browser extension. It runs entirely in your browser; nothing you type is sent anywhere.</p>
-  <div class="checker">
+  <h2 class="reveal">Try the link checker</h2>
+  <p class="sub reveal">This is the same JavaScript engine that runs in the X-Secure browser extension. It runs entirely in your browser; nothing you type is sent anywhere.</p>
+  <div class="checker reveal">
     <form class="row" id="form">
       <input type="text" id="url" placeholder="Paste a link, e.g. http://paypa1-secure-login.xyz/verify" aria-label="Link to check" autocomplete="off" spellcheck="false">
       <button class="btn" type="submit">Check link</button>
@@ -110,78 +363,196 @@
   </div>
 </div></section>
 
-<section><div class="wrap">
-  <h2>The app</h2>
-  <p class="sub">A dark, rounded desktop UI with antialiased graphs, keyboard navigation and plain-English results.</p>
-  <p class="note" style="margin:-10px 0 20px">About these screenshots: the Home and Scan screens show <b>sample data</b> (example files and a pre-filled scan summary) so none of my real file paths appear. The hardware details, memory/CPU gauges and mode list on the optimizer screen are real readings from my PC. The Analytics bars are real short test runs, and the mode-switch graph is a labelled illustration.</p>
-  <div class="shots">
-    <figure><img loading="lazy" src="img/scan.png" alt="Scan page with quick, full and custom scans and a results table" width="1551" height="941"><figcaption>Scan (sample results): quick, full-PC and custom, with the reason each file was flagged and a scheduler.</figcaption></figure>
-    <figure><img loading="lazy" src="img/optimizer.png" alt="PC optimizer showing detected hardware and four performance modes" width="1551" height="941"><figcaption>PC optimizer: detects the real hardware and offers changes that are approved one by one and fully restorable.</figcaption></figure>
-    <figure><img loading="lazy" src="img/mode.png" alt="Gaming mode switch animation showing a conceptual graph" width="1551" height="941"><figcaption>Mode switch: a labelled illustration of what the mode prioritizes. Success is shown only after Windows confirms the change.</figcaption></figure>
-    <figure><img loading="lazy" src="img/analytics.png" alt="Performance analytics page comparing measured CPU use between modes" width="1551" height="941"><figcaption>Performance Analytics: real measurements per mode, with sample counts. Anything unmeasurable says "Not available".</figcaption></figure>
-    <figure><img loading="lazy" src="img/web.png" alt="Web guard page flagging a phishing link as dangerous" width="1551" height="941"><figcaption>Web guard: the link checker above, inside the desktop app.</figcaption></figure>
-  </div>
+<section id="download" class="alt"><div class="wrap">
+  <h2 class="reveal">Download X-Secure for Windows</h2>
+  <p class="sub reveal">Free and open source. Choose the installer or the portable zip.</p>
+  <div class="dl reveal"><div class="dl-grid">
+    <div>
+      <div class="btns">
+        <a class="btn" id="dlBtn" href="#download" aria-disabled="true">Checking for the latest build&hellip;</a>
+        <a class="btn secondary" id="dlSetup" href="#download" hidden>Installer (.exe)</a>
+      </div>
+      <p class="note" id="dlNote" role="status"></p>
+      <dl class="kv">
+        <dt>Version</dt><dd class="js-version">1.0.0</dd>
+        <dt>Windows</dt><dd>Windows 10 and Windows 11, 64-bit</dd>
+        <dt>Requirements</dt><dd>About 150 MB of disk space and 4 GB RAM. No Python or other software needed.</dd>
+        <dt>File</dt><dd id="dlFile">-</dd>
+        <dt>Size</dt><dd id="dlSize">-</dd>
+        <dt>SHA-256</dt><dd id="dlHash"><code>-</code></dd>
+      </dl>
+      <p class="note">Not code-signed, so SmartScreen may warn on first run (More info, then Run anyway). Verify the hash first: <code>Get-FileHash .\X-Secure-*.zip -Algorithm SHA256</code></p>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Install</h3>
+      <ol class="install">
+        <li><b>Installer:</b> run <code>X-Secure-&hellip;-setup.exe</code>, choose the folder (it installs for your account, no administrator needed) and optionally a desktop shortcut.</li>
+        <li><b>Portable:</b> unzip anywhere and run <code>X-Secure\X-Secure.exe</code>.</li>
+        <li>Open the app and run a quick scan. Run <code>x-secure-cli.exe update</code> once to download threat lists.</li>
+        <li>Uninstall from Windows Settings. Your settings and quarantine stay in <code>%USERPROFILE%\.x-secure</code> until you delete that folder.</li>
+      </ol>
+      <h3>Release notes</h3>
+      <ul class="check" id="notes">
+        <li>Scanner rebuilt as independent checks; encrypted quarantine with locking and corrupt-index protection.</li>
+        <li>Optimizer, interface and tests reorganized into focused modules; 100% statement coverage.</li>
+        <li>Single-instance window, graceful start-up failure messages and an error log.</li>
+        <li>Standalone Windows build: no Python required.</li>
+      </ul>
+    </div>
+  </div></div>
 </div></section>
-
-<section><div class="wrap">
-  <h2>What's under the hood</h2>
-  <div class="grid">
-    <div class="card"><h3>Scan engine</h3><p>SHA-256 blocklist, entropy and PE heuristics, script and encoded-PowerShell analysis (including UTF-16 and download-and-run cradles), archive and Office-macro inspection, ransomware signs, and hidden NTFS alternate data streams.</p></div>
-    <div class="card"><h3>Fast and safe to run</h3><p>Parallel worker processes at low priority, a SQLite cache that skips unchanged files, and symlink, junction and cloud-file handling so a full-PC scan never loops or downloads anything.</p></div>
-    <div class="card"><h3>Fewer false alarms</h3><p>Authenticode signatures are checked through Windows' own WinVerifyTrust, offline, and only soften program-structure heuristics. A signature never excuses a double extension or a known-bad hash.</p></div>
-    <div class="card"><h3>Encrypted quarantine</h3><p>Quarantined files are encrypted with Windows DPAPI, bound to their own id so tampered or swapped files refuse to restore. No key sits next to the data.</p></div>
-    <div class="card"><h3>Browser guard + bridge</h3><p>A Chrome/Edge extension that shares its URL logic with the desktop app (verified identical by tests that run the JS in Node) and sends each finished download to the desktop scanner over Native Messaging.</p></div>
-    <div class="card"><h3>Honest optimizer</h3><p>Reversible changes only, each approved first and verified after. It never closes apps, touches services, security features or boot settings, and shows "no meaningful change" when that's the truth.</p></div>
-  </div>
-</div></section>
-
-<section><div class="wrap">
-  <h2>Limitations, stated up front</h2>
-  <details><summary>It is a user-mode prototype, not a replacement for Microsoft Defender</summary><p>It can detect and react, but cannot block a program before it starts; that needs a kernel driver. Heuristics miss novel malware and can flag unusual but legitimate software.</p></details>
-  <details><summary>Anything running as you can reach its data</summary><p>The allowlist, cache and quarantine live in your user profile, so malware running with your privileges could tamper with them. Fixing that needs a SYSTEM service.</p></details>
-  <details><summary>The performance graphs on the mode cards are illustrations</summary><p>They show what each mode is designed to prioritize and are labelled that way. Measured numbers appear only on the Analytics page, and FPS, frame time and power draw show "Not available" because Windows does not expose them to normal apps.</p></details>
-  <details><summary>Builds are not code-signed</summary><p>Windows SmartScreen may warn on first run. You can also run it from source.</p></details>
-</div></section>
+</main>
 
 <footer><div class="wrap">
-  X-Secure is a learning and portfolio project. Threat data from URLhaus (via the malware-filter project) and Phishing Army (CC BY-NC 4.0).
-  <span id="footRepo"></span>
+  <div class="cols">
+    <div><a class="brand" href="#top" style="padding:0"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2.5 5 6.5v8.2c0 7 4.6 12.2 11 14.8 6.4-2.6 11-7.8 11-14.8V6.5L16 2.5Z" fill="#5B8CFF"/></svg>X-Secure</a>
+      <p style="margin:12px 0 0;max-width:340px">Antivirus protection and a safe PC optimizer for Windows. A learning and portfolio project; it does not replace Microsoft Defender. Threat data from URLhaus (via the malware-filter project) and Phishing Army (CC BY-NC 4.0).</p></div>
+    <div><h4>Product</h4><a href="#overview">Overview</a><a href="#how">How it works</a><a href="#modes">Modes</a><a href="#features">Features</a></div>
+    <div><h4>Resources</h4><a href="#download">Download</a><a id="docLink" href="#download">Build &amp; install guide</a><a id="repoLink" href="#download">Source code</a><a href="#trust">Privacy &amp; limits</a></div>
+    <div><h4>Contact</h4><a id="contactLink" href="#download">Issues &amp; feedback</a><p style="margin:6px 0 0">Version <span class="js-version">1.0.0</span><br>MIT License</p></div>
+  </div>
 </div></footer>
 
+<script src="url_rules.js"></script>
 <script src="analyzer.js"></script>
 <script>
-  // Set these two links once the repository is public; the buttons stay hidden while they are empty.
+(() => {
+  "use strict";
   const REPO_URL = "https://github.com/SidLazy3106/Anti-virus-software";
-  const RELEASE_URL = "";
-  for (const [id, url] of [["repoBtn", REPO_URL], ["relBtn", RELEASE_URL]]) {
-    const el = document.getElementById(id);
-    if (url) { el.href = url; el.hidden = false; }
-  }
-
   const $ = (id) => document.getElementById(id);
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  $("themeBtn").addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+    document.documentElement.dataset.theme = next; try { localStorage.setItem("xs-theme", next); } catch (e) { /* private mode */ }
+  });
+  $("repoLink").href = REPO_URL;
+  $("docLink").href = REPO_URL + "/blob/main/BUILD.md";
+  $("contactLink").href = REPO_URL + "/issues";
+
+  /* scroll reveal + active nav link */
+  const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: .12 });
+  document.querySelectorAll(".reveal").forEach((el) => reduce ? el.classList.add("in") : io.observe(el));
+  const links = [...document.querySelectorAll("nav.top .links a")];
+  const secs = links.map((a) => document.querySelector(a.getAttribute("href")));
+  const spy = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) links.forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + e.target.id)); }), { rootMargin: "-45% 0px -50% 0px" });
+  secs.forEach((s) => s && spy.observe(s));
+
+  /* hero dashboard: sample data only */
+  const ring = $("ringVal");
+  setTimeout(() => { ring.style.strokeDashoffset = String(314 * (1 - .86)); countTo($("ringNum"), 86, 1400); }, 350);
+  function countTo(el, to, ms) {
+    if (reduce) { el.textContent = to; return; }
+    const t0 = performance.now();
+    (function f(t) { const k = Math.min(1, (t - t0) / ms); el.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(f); })(t0);
+  }
+  const demoLog = ["[scan] Quick scan started (sample)", "[scan] 12,408 files checked, 0 threats", "[shield] Watching Downloads", "[web] Link checked: github.com/login, clean",
+    "[shield] New file: setup.exe, scanned, clean", "[audit] Health check: firewall on, Defender on", "[scan] Cache hit: 11,950 unchanged files skipped", "[shield] Process chain OK: explorer.exe > chrome.exe"];
+  let li = 0; const log = $("heroLog");
+  function pushLog() { const d = document.createElement("div"); d.textContent = demoLog[li++ % demoLog.length]; log.appendChild(d); while (log.children.length > 5) log.firstChild.remove(); }
+  for (let i = 0; i < 4; i++) pushLog(); if (!reduce) setInterval(pushLog, 2300);
+  const m = { Cpu: [18, 42], Ram: [48, 60], Disk: [37, 45] };
+  function wobble() { for (const [k, [lo, hi]] of Object.entries(m)) { const v = Math.round(lo + Math.random() * (hi - lo)); $("m" + k).textContent = v + "%"; $("b" + k).style.width = v + "%"; } }
+  setTimeout(wobble, 500); if (!reduce) setInterval(wobble, 2600);
+
+  /* protection walkthrough */
+  const STEPS = [
+    { t: "Start a scan", d: "Choose a quick scan (the places malware usually lands), a full scan of every fixed drive, or a file or folder of your own. Scans run in the background at low priority so your PC stays responsive, and you can stop them at any time.",
+      lines: ["> Quick scan: Startup, Temp, Downloads, Desktop, AppData...", "> 6 worker processes ready (below-normal priority)", "> Result cache loaded: unchanged files will be skipped"] },
+    { t: "Find the files", d: "The scanner walks your folders without following symlinks or junctions (so it never loops) and skips cloud-only OneDrive files instead of silently downloading them. Files it cannot read are counted and reported, not hidden.",
+      lines: ["C:\\Users\\Demo\\Downloads\\invoice-march.pdf", "C:\\Users\\Demo\\Downloads\\setup.exe", "C:\\Users\\Demo\\AppData\\Local\\Temp\\update.ps1", "skipped: cloud-only placeholder (not downloaded)", "skipped: pagefile.sys (locked system file)"] },
+    { t: "Inspect each file", d: "Every file gets a SHA-256 hash checked against known-bad lists, then a set of independent checks looks for disguised programs, double extensions, packed code, risky script behaviour (including encoded PowerShell), macros inside Office files, suspicious archives, hidden NTFS streams and ransomware signs. Each check adds points with a reason.",
+      lines: ["hash        : not on the known-bad list", "extension   : invoice-march.pdf.exe  -> double extension +45", "script      : update.ps1 -> encoded command +30, hidden window +10", "archive     : none", "signature   : none (nothing to soften)"] },
+    { t: "Reach a verdict", d: "Points add up to a 0-100 risk score: below 35 is clean, 35-69 is suspicious and 70 or more is dangerous. You always see why a file was flagged. A valid Windows signature can soften program-structure heuristics, but never a double extension, a script or a known-bad hash.",
+      lines: ["invoice-march.pdf.exe  score 45  SUSPICIOUS", "   - Double extension (document name hiding a program)", "update.ps1             score 40  SUSPICIOUS", "   - PowerShell encoded command", "   - Runs with a hidden window"] },
+    { t: "Quarantine safely", d: "Nothing is deleted automatically. You choose which files to lock away. They are encrypted with Windows DPAPI, bound to their own id so tampering is detected, and listed on the Quarantine page where you can restore or permanently delete them. You can also mark a file as safe so it is not flagged again.",
+      lines: ["> Encrypting invoice-march.pdf.exe (DPAPI, bound to this Windows account)", "> Original removed only after the encrypted copy is written", "> Recorded in the quarantine list: restore or delete any time"] },
+  ];
+  const list = $("stepList"), stage = $("stage"); let cur = 0, timer = 0;
+  STEPS.forEach((s, i) => {
+    const b = document.createElement("button"); b.className = "step"; b.type = "button"; b.setAttribute("role", "tab");
+    b.innerHTML = `<b>${i + 1}</b><span>${esc(s.t)}</span>`; b.addEventListener("click", () => show(i)); list.appendChild(b);
+  });
+  function show(i) {
+    cur = i; clearTimeout(timer);
+    [...list.children].forEach((b, k) => { b.classList.toggle("on", k === i); b.setAttribute("aria-selected", k === i); });
+    const s = STEPS[i];
+    stage.innerHTML = `<h3>${i + 1}. ${esc(s.t)}</h3><p>${esc(s.d)}</p><div class="bar" aria-hidden="true"><i id="stBar"></i></div><div class="demo" id="stDemo"></div>
+      <p class="note">Sample files and results for illustration.</p>
+      <div class="controls"><button class="btn secondary small" type="button" id="stPrev" ${i === 0 ? "disabled" : ""}>Back</button><button class="btn small" type="button" id="stNext">${i === STEPS.length - 1 ? "Replay" : "Next step"}</button></div>`;
+    $("stPrev").onclick = () => show(i - 1); $("stNext").onclick = () => show(i === STEPS.length - 1 ? 0 : i + 1);
+    const demo = $("stDemo"), bar = $("stBar"); let n = 0;
+    (function tick() {
+      if (n < s.lines.length) { const d = document.createElement("div"); d.textContent = s.lines[n++]; demo.appendChild(d); bar.style.width = (n / s.lines.length * 100) + "%"; timer = setTimeout(tick, reduce ? 0 : 650); }
+    })();
+  }
+  show(0);
+
+  /* modes: port of the app's illustration curves (sentinel/mode_art.py); labelled as illustration */
+  const ease = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+  const MODES = {
+    gaming:   { name: "Gaming", c: "#8B6CFF", d: "Uses the High performance power plan so the CPU stays responsive for games. Uses more power and runs warmer; on a laptop the battery drains faster.",
+      lines: [["Performance priority", "#8B6CFF", (x) => .80 + .018 * Math.sin(9 * x)], ["Background activity", "#7E8BAE", (x) => .30 - .16 * x + .015 * Math.sin(6 * x + 1)]] },
+    balanced: { name: "Balanced", c: "#5B8CFF", d: "The Windows default Balanced plan: everyday performance with normal power use. Nothing else is changed.",
+      lines: [["Resource use", "#5B8CFF", (x) => .52 + .07 * Math.sin(5 * x)], ["Background activity", "#7E8BAE", (x) => .32 + .05 * Math.sin(3 * x + 1)]] },
+    workspace:{ name: "Workspace", c: "#34D399", d: "Balanced plan with the intent of keeping many apps available at once. No app is closed and no unsaved work is at risk.",
+      lines: [["Workload A", "#34D399", (x) => .30 + .08 * Math.sin(6 * x)], ["Workload B", "#5B8CFF", (x) => .52 + .08 * Math.sin(6 * x + 2)], ["Workload C", "#FBBF24", (x) => .74 + .08 * Math.sin(6 * x + 4)]] },
+    eco:      { name: "Eco", c: "#FBBF24", d: "Power saver plan: lower energy demand and a quieter machine. The PC may feel slower under heavy load; security and updates keep working.",
+      lines: [["Energy demand", "#FBBF24", (x) => .28 + .42 * (1 - ease(Math.min(1, x * 1.1))) + .01 * Math.sin(6 * x)], ["Background activity", "#7E8BAE", (x) => .14 + .01 * Math.sin(5 * x)]] },
+  };
+  const mb = $("modeButtons"), svg = $("modeLines"), grid = $("modeGrid"), legend = $("modeLegend");
+  const NS = "http://www.w3.org/2000/svg"; let curMode = "gaming", raf = 0;
+  grid.innerHTML = `<line x1="40" y1="210" x2="700" y2="210" stroke="var(--border)"/><line x1="40" y1="20" x2="40" y2="210" stroke="var(--border)"/><text x="700" y="235" text-anchor="end" fill="var(--faint)" font-size="12">time</text>`;
+  Object.entries(MODES).forEach(([k, v]) => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "mode"; b.style.setProperty("--mc", v.c); b.setAttribute("aria-pressed", k === curMode);
+    b.innerHTML = `<span class="dot"></span><h3>${v.name} Mode</h3><p>${esc(v.d)}</p>`; b.addEventListener("click", () => pick(k)); mb.appendChild(b);
+  });
+  function pick(k) { curMode = k; [...mb.children].forEach((b, i) => b.setAttribute("aria-pressed", Object.keys(MODES)[i] === k)); draw(); }
+  function draw() {
+    cancelAnimationFrame(raf); const mode = MODES[curMode]; svg.innerHTML = ""; const N = 60;
+    legend.innerHTML = mode.lines.map(([l, c]) => `<span><i style="background:${c}"></i>${esc(l)}</span>`).join("");
+    const paths = mode.lines.map(([, c, f]) => { const p = document.createElementNS(NS, "path"); p.setAttribute("fill", "none"); p.setAttribute("stroke", c); p.setAttribute("stroke-width", "3"); p.setAttribute("stroke-linecap", "round"); p.setAttribute("stroke-linejoin", "round"); svg.appendChild(p); return [p, f]; });
+    const t0 = performance.now(), dur = reduce ? 1 : 1500;
+    (function frame(t) {
+      const k = Math.min(1, (t - t0) / dur), shown = Math.max(2, Math.round(N * ease(k)));
+      paths.forEach(([p, f]) => { let d = ""; for (let i = 0; i < shown; i++) { const x = i / (N - 1); d += (i ? "L" : "M") + (40 + 660 * x).toFixed(1) + " " + (210 - 190 * f(x)).toFixed(1); } p.setAttribute("d", d); });
+      if (k < 1) raf = requestAnimationFrame(frame);
+    })(t0);
+  }
+  draw();
+
+  /* link checker (the extension's real engine) */
   const COLOR = { clean: "var(--success)", suspicious: "var(--warning)", malicious: "var(--danger)" };
   const TITLE = { clean: "Looks clean", suspicious: "Suspicious: be careful", malicious: "Dangerous: don't open it" };
-
-  function esc(s) { return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
-
   function check(raw) {
-    raw = raw.trim();
-    const out = $("result");
-    if (!raw) { out.innerHTML = ""; return; }
+    raw = raw.trim(); const out = $("result"); if (!raw) { out.innerHTML = ""; return; }
     if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = "http://" + raw;
     const v = analyzeUrl(raw, []);
-    const why = v.reasons.length
-      ? "<ul>" + v.reasons.map((r) => "<li>" + esc(r) + "</li>").join("") + "</ul>"
-      : "<p class='note'>No warning signs found. That does not guarantee a site is safe.</p>";
-    out.innerHTML =
-      `<div class="verdict ${v.verdict}"><span class="dot"></span>${TITLE[v.verdict]}</div>` +
-      `<div class="bar" aria-hidden="true"><i style="width:${v.score}%;background:${COLOR[v.verdict]}"></i></div>` +
-      `<div class="note">Risk score ${v.score} / 100</div>` + why;
+    const why = v.reasons.length ? "<ul>" + v.reasons.map((r) => "<li>" + esc(r) + "</li>").join("") + "</ul>" : "<p class='note'>No warning signs found. That does not guarantee a site is safe.</p>";
+    out.innerHTML = `<div class="verdict ${v.verdict}"><span class="vdot"></span>${TITLE[v.verdict]}</div><div class="bar" aria-hidden="true"><i style="width:${v.score}%;background:${COLOR[v.verdict]}"></i></div><div class="note">Risk score ${v.score} / 100</div>` + why;
   }
-
   $("form").addEventListener("submit", (e) => { e.preventDefault(); check($("url").value); });
-  document.querySelectorAll(".tries button").forEach((b) =>
-    b.addEventListener("click", () => { $("url").value = b.dataset.u; check(b.dataset.u); }));
+  document.querySelectorAll(".tries button").forEach((b) => b.addEventListener("click", () => { $("url").value = b.dataset.u; check(b.dataset.u); }));
+
+  /* download: driven by release.json, which the release build writes next to the real file */
+  const fmt = (n) => (n / 1048576).toFixed(1) + " MB";
+  fetch("release.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw 0; return r.json(); }).then(async (rel) => {
+    document.querySelectorAll(".js-version").forEach((e) => { e.textContent = rel.version; });
+    $("dlFile").textContent = rel.file; $("dlSize").textContent = fmt(rel.size) + " (portable zip)"; $("dlHash").innerHTML = "<code>" + esc(rel.sha256) + "</code>";
+    const exists = async (f) => { try { return (await fetch("downloads/" + f, { method: "HEAD" })).ok; } catch { return false; } };
+    const btn = $("dlBtn");
+    if (await exists(rel.file)) {
+      btn.href = "downloads/" + rel.file; btn.setAttribute("download", ""); btn.removeAttribute("aria-disabled"); btn.textContent = "Download for Windows (portable zip)";
+      $("dlNote").textContent = "Built " + rel.built + ". " + rel.requires + ".";
+    } else {
+      btn.textContent = "Download not published here yet"; $("dlNote").innerHTML = "This copy of the site has no build attached. Get one from the <a href='" + REPO_URL + "/releases'>GitHub Releases page</a>, or build it yourself (<a href='" + REPO_URL + "/blob/main/BUILD.md'>build guide</a>).";
+    }
+    if (rel.installer && await exists(rel.installer.file)) { const s = $("dlSetup"); s.href = "downloads/" + rel.installer.file; s.hidden = false; }
+  }).catch(() => {
+    $("dlBtn").textContent = "Download not available in this view";
+    $("dlNote").innerHTML = "Open this page from a web server (not as a local file) after running the release build. See the <a href='" + REPO_URL + "/blob/main/BUILD.md'>build guide</a>.";
+  });
+})();
 </script>
 </body>
 </html>

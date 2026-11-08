@@ -18,7 +18,7 @@ import time
 import zipfile
 from pathlib import Path
 
-from .scanner import CLEAN, Scanner
+from .scanner import CLEAN, ERROR, Scanner
 
 
 def default_corpus() -> list:
@@ -72,14 +72,15 @@ def run(corpus=None, limit: int = 20000, progress=None, workers=None) -> dict:
     from .engine import ScanEngine
     sc = Scanner(log=False)
     roots = [Path(r) for r in (corpus or default_corpus())]
-    flagged, reasons = [], collections.Counter()
+    flagged: list = []
+    reasons: collections.Counter = collections.Counter()
     eng = ScanEngine(workers=workers, use_cache=False)
     stop = threading.Event()
     t0 = time.time()
     last = 0
     from .engine import default_excludes
     for r in eng.scan(roots, exclude=default_excludes(), cancel=stop):
-        if r.verdict not in (CLEAN, "error"):
+        if r.verdict not in (CLEAN, ERROR):
             flagged.append((r.path, r.verdict, r.score, r.reasons))
             reasons.update(x.split(":")[0].split(" (")[0] for x in r.reasons)
         if progress and eng.stats.files - last >= 1000:

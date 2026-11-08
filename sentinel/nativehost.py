@@ -18,11 +18,13 @@ import os
 import struct
 import sys
 from pathlib import Path
+from typing import Optional
 
 from . import config
+from .platform_utils import IS_WIN
 
-HOST_NAME = "com.xsecure.scanner"
-MAX_MESSAGE = 1 << 20                 # browser->host messages are tiny; refuse anything huge
+HOST_NAME = config.NATIVE_HOST_NAME
+MAX_MESSAGE = config.NATIVE_MAX_MESSAGE_BYTES
 REG_KEYS = {
     "chrome": r"Software\Google\Chrome\NativeMessagingHosts",
     "edge": r"Software\Microsoft\Edge\NativeMessagingHosts",
@@ -81,7 +83,7 @@ def handle(msg) -> dict:
 
 def serve(stdin=None, stdout=None) -> int:
     """Answer requests until the browser closes the pipe."""
-    if sys.platform == "win32" and stdin is None:
+    if IS_WIN and stdin is None:
         import msvcrt
         msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
         msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
@@ -116,7 +118,7 @@ def launcher_text() -> str:
     return f'@echo off\r\n"{sys.executable}" -u "{main}" nativehost serve\r\n'
 
 
-def manifest(launcher: Path, extension_ids: list) -> dict:
+def manifest(launcher: Path, extension_ids: list[str]) -> dict:
     return {"name": HOST_NAME, "description": "X-Secure desktop scanner for downloads",
             "path": str(launcher), "type": "stdio",
             "allowed_origins": [f"chrome-extension://{i}/" for i in extension_ids]}
@@ -126,7 +128,7 @@ def valid_extension_id(ext_id: str) -> bool:
     return len(ext_id) == 32 and all("a" <= c <= "p" for c in ext_id)   # Chrome ids use the letters a-p
 
 
-def install(extension_ids: list, browsers=("chrome", "edge"), reg_base: str | None = None) -> list:
+def install(extension_ids: list[str], browsers=("chrome", "edge"), reg_base: str | None = None) -> list[tuple[str, str]]:
     """Write the launcher + manifest and register them (HKCU only, no admin). Returns [(browser, key path)].
     reg_base overrides the registry location (used by the tests)."""
     ids = [i.strip().lower() for i in extension_ids]
@@ -149,7 +151,7 @@ def install(extension_ids: list, browsers=("chrome", "edge"), reg_base: str | No
     return done
 
 
-def uninstall(browsers=("chrome", "edge"), reg_base: str | None = None) -> list:
+def uninstall(browsers=("chrome", "edge"), reg_base: str | None = None) -> list[str]:
     import winreg
     removed = []
     for b in browsers:
@@ -164,7 +166,7 @@ def uninstall(browsers=("chrome", "edge"), reg_base: str | None = None) -> list:
     return removed
 
 
-def status(browsers=("chrome", "edge"), reg_base: str | None = None) -> dict:
+def status(browsers=("chrome", "edge"), reg_base: str | None = None) -> dict[str, Optional[str]]:
     import winreg
     out = {}
     for b in browsers:

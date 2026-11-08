@@ -19,20 +19,16 @@ from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
 from . import config, logger
+from .platform_utils import IS_WIN, norm_path
+from .verdict import Verdict
+from .winconst import (BELOW_NORMAL_PRIORITY_CLASS, DRIVE_FIXED, FILE_ATTRIBUTE_OFFLINE, FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS,
+                       FILE_ATTRIBUTE_RECALL_ON_OPEN, IO_REPARSE_TAG_MOUNT_POINT)
 from .scanner import ERROR, MALICIOUS, SUSPICIOUS, ScanResult, Scanner
 
-IS_WIN = sys.platform == "win32"
-# Locked or virtual system files: reading them only produces errors.
-SKIP_FILES = {"pagefile.sys", "hiberfil.sys", "swapfile.sys", "dumpstack.log.tmp"}
-FILE_ATTRIBUTE_OFFLINE = 0x1000
-FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x400000   # OneDrive "online-only": reading would download it
-FILE_ATTRIBUTE_RECALL_ON_OPEN = 0x40000
-IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
-CACHE_MAX_AGE = 7 * 24 * 3600                       # re-verify every file at least weekly
-
-
-def _norm(p) -> str:
-    return os.path.normcase(os.path.abspath(str(p)))
+SKIP_FILES = config.SKIPPED_FILE_NAMES
+# Modules whose code decides verdicts; a change to any of them (or to checks/*.py) invalidates the cache.
+VERDICT_MODULES = ("scanner.py", "result.py", "verdict.py", "entropy.py", "ads.py", "authenticode.py")
+CACHE_MAX_AGE = config.CACHE_MAX_AGE_SECONDS
 
 
 def _inside(path_norm: str, roots: Iterable[str]) -> bool:
@@ -69,7 +65,7 @@ def _is_junction(entry: os.DirEntry) -> bool:
         return False
 
 
-def iter_files(roots, exclude=(), stats: Optional[ScanStats] = None) -> Iterator[tuple]:
+def iter_files(roots, exclude=(), stats: Optional[ScanStats] = None) -> Iterator[tuple[str, int, int]]:
     """Yield (path, size, mtime_ns) for every regular file under `roots`.
 
     * never follows symlinks or junctions (no loops, no double counting via "C:\\Users\\All Users")
@@ -77,13 +73,16 @@ def iter_files(roots, exclude=(), stats: Optional[ScanStats] = None) -> Iterator
     * skips cloud-only files instead of silently downloading the user's whole OneDrive
     """
     stats = stats if stats is not None else ScanStats()
-    excl = {_norm(e) for e in exclude}
+    excl = {norm_path(e) for e in exclude}
     done: list = []
+    file_roots: set = set()      # files named directly as roots: never yielded a second time by a folder walk
     for root in roots:
-        r = _norm(root)
+        r = norm_path(root)
         if r in excl or _inside(r, done) or _inside(r, excl):
             continue
         if os.path.isfile(r):
+            done.append(r)
+            file_roots.add(r)
             try:
                 st = os.stat(r)
                 yield r, st.st_size, st.st_mtime_ns
@@ -112,7 +111,7 @@ def iter_files(roots, exclude=(), stats: Optional[ScanStats] = None) -> Iterator
                         if e.is_symlink() or _is_junction(e):
                             continue
                         if e.is_dir(follow_symlinks=False):
-                            if _norm(e.path) not in prune:
+                            if norm_path(e.path) not in prune:
                                 stack.append(e.path)
                             continue
                         if not e.is_file(follow_symlinks=False):
@@ -128,6 +127,8 @@ def iter_files(roots, exclude=(), stats: Optional[ScanStats] = None) -> Iterator
                             continue
                         if not stat_mod.S_ISREG(st.st_mode):
                             continue
+                        if file_roots and norm_path(e.path) in file_roots:
+                            continue
                         yield e.path, st.st_size, st.st_mtime_ns
                     except OSError:
                         stats.errors += 1
@@ -141,7 +142,7 @@ def _env_path(*names_and_parts) -> Optional[str]:
     return os.path.join(base, *parts) if base else None
 
 
-def priority_locations() -> list:
+def priority_locations() -> list[str]:
     """Where malware usually lands or persists. Scanned first in every quick/full scan."""
     home = Path.home()
     cands = [
@@ -158,13 +159,13 @@ def priority_locations() -> list:
     ]
     out, seen = [], set()
     for c in cands:
-        if c and os.path.isdir(c) and _norm(c) not in seen:
-            seen.add(_norm(c))
+        if c and os.path.isdir(c) and norm_path(c) not in seen:
+            seen.add(norm_path(c))
             out.append(c)
     return out
 
 
-def fixed_drives() -> list:
+def fixed_drives() -> list[str]:
     if not IS_WIN:
         return ["/"]
     import ctypes
@@ -173,12 +174,12 @@ def fixed_drives() -> list:
     for i in range(26):
         if mask & (1 << i):
             root = f"{chr(65 + i)}:\\"
-            if k32.GetDriveTypeW(ctypes.c_wchar_p(root)) == 3:  # DRIVE_FIXED (skips USB sticks, DVD, network)
+            if k32.GetDriveTypeW(ctypes.c_wchar_p(root)) == DRIVE_FIXED:
                 drives.append(root)
     return drives
 
 
-def default_excludes() -> list:
+def default_excludes() -> list[str]:
     """Our own data (quarantine, cache, logs) and WinSxS, which only holds Microsoft-signed component copies."""
     ex = [str(config.DATA_DIR)]
     winsxs = _env_path("SystemRoot", "WinSxS")
@@ -187,11 +188,11 @@ def default_excludes() -> list:
     return ex
 
 
-def quick_scan_plan():
+def quick_scan_plan() -> tuple[list[str], list[str]]:
     return priority_locations(), default_excludes()
 
 
-def full_scan_plan():
+def full_scan_plan() -> tuple[list[str], list[str]]:
     return priority_locations() + fixed_drives(), default_excludes()
 
 
@@ -199,21 +200,22 @@ def full_scan_plan():
 def rules_fingerprint() -> str:
     """Changes whenever detection could change: scanner code, signatures, rules, allowlist, optional libs."""
     h = hashlib.sha256()
-    for mod in ("scanner.py", "ads.py", "authenticode.py"):           # every module that affects verdicts
+    pkg = Path(__file__).parent
+    for mod in [pkg / name for name in VERDICT_MODULES] + sorted((pkg / "checks").glob("*.py")):
         try:
-            h.update(Path(__file__).with_name(mod).read_bytes())
+            h.update(mod.read_bytes())
         except OSError:                    # packaged (PyInstaller) build has no .py files: the build identifies the code
             exe = Path(sys.executable)
             h.update(f"{config.VERSION}:{exe}:{exe.stat().st_mtime_ns if exe.exists() else 0}".encode())
             break
     h.update(f"{config.SUSPICIOUS_THRESHOLD}/{config.MALICIOUS_THRESHOLD}/{config.MAX_HEURISTIC_SIZE}".encode())
-    from . import scanner as _s
-    h.update(f"pefile={_s.pefile is not None};yara={_s.yara is not None}".encode())
+    from .checks import pe as _pe, yara_check as _yara
+    h.update(f"pefile={_pe.pefile is not None};yara={_yara.yara is not None}".encode())
     files = []
     for d in (config.SIGNATURES_DIR, config.UPDATED_SIGS_DIR, config.RULES_DIR):
         if Path(d).is_dir():
             files += sorted(Path(d).iterdir())
-    files.append(config.ALLOWLIST_FILE)
+    files += [config.ALLOWLIST_FILE, config.URL_RULES_FILE]
     for f in files:
         try:
             st = f.stat()
@@ -228,7 +230,7 @@ class ScanCache:
 
     def __init__(self, path=None, fingerprint: str = "", max_age: float = CACHE_MAX_AGE):
         config.ensure_dirs()
-        self.path = Path(path or config.DATA_DIR / "scan_cache.sqlite")
+        self.path = Path(path or config.DATA_DIR / config.CACHE_DB_NAME)
         self.fp, self.max_age = fingerprint, max_age
         self.db = sqlite3.connect(str(self.path), timeout=30)
         self.db.execute("PRAGMA journal_mode=WAL")
@@ -238,19 +240,19 @@ class ScanCache:
 
     def get(self, path: str, size: int, mtime_ns: int) -> Optional[ScanResult]:
         row = self.db.execute("SELECT size, mtime_ns, fp, sha256, verdict, score, reasons, scanned FROM files"
-                              " WHERE path=?", (_norm(path),)).fetchone()
+                              " WHERE path=?", (norm_path(path),)).fetchone()
         if not row or row[0] != size or row[1] != mtime_ns or row[2] != self.fp:
             return None
         if time.time() - row[7] > self.max_age:
             return None
-        return ScanResult(path=path, verdict=row[4], score=row[5], sha256=row[3], reasons=json.loads(row[6]))
+        return ScanResult(path=path, verdict=Verdict(row[4]), score=row[5], sha256=row[3], reasons=json.loads(row[6]))
 
     def put(self, res: ScanResult, size: int, mtime_ns: int):
         if res.verdict == ERROR:
             return
-        self._pending.append((_norm(res.path), size, mtime_ns, self.fp, res.sha256, res.verdict, res.score,
+        self._pending.append((norm_path(res.path), size, mtime_ns, self.fp, res.sha256, res.verdict, res.score,
                               json.dumps(res.reasons), time.time()))
-        if len(self._pending) >= 500:
+        if len(self._pending) >= config.CACHE_FLUSH_EVERY:
             self.flush()
 
     def flush(self):
@@ -275,11 +277,11 @@ def _lower_priority():
         if IS_WIN:
             import ctypes
             k32 = ctypes.windll.kernel32
-            k32.SetPriorityClass(k32.GetCurrentProcess(), 0x00004000)  # BELOW_NORMAL_PRIORITY_CLASS
+            k32.SetPriorityClass(k32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)
         else:
             os.nice(10)
-    except Exception:
-        pass
+    except (OSError, AttributeError) as e:     # a lower priority is a courtesy, never a requirement
+        logger.get().info("could not lower scan priority: %s", e)
 
 
 def _init_worker(low_priority: bool):
@@ -290,11 +292,12 @@ def _init_worker(low_priority: bool):
 
 
 def _scan_in_worker(path: str) -> ScanResult:
+    assert _worker_scanner is not None, "_init_worker runs before any task"
     return _worker_scanner.scan_file(path)
 
 
 def default_workers() -> int:
-    return max(1, min(8, (os.cpu_count() or 2) - 1))
+    return max(1, min(config.MAX_SCAN_WORKERS, (os.cpu_count() or 2) - 1))
 
 
 class ScanEngine:
@@ -353,7 +356,7 @@ class ScanEngine:
             try:
                 while True:
                     # keep a bounded number of files in flight (memory stays flat on million-file drives)
-                    while not exhausted and not cancelled() and len(pending) < self.workers * 4:
+                    while not exhausted and not cancelled() and len(pending) < self.workers * config.IN_FLIGHT_PER_WORKER:
                         try:
                             path, size, mtime = next(files)
                         except StopIteration:
@@ -376,9 +379,7 @@ class ScanEngine:
                             f.cancel()
                         break
                     if not pending:
-                        if exhausted:
-                            break
-                        continue
+                        break      # the feeding loop above only stops early when full or cancelled, so this means done
                     done, _ = wait(pending, timeout=0.5, return_when=FIRST_COMPLETED)
                     for f in done:
                         path, size, mtime = pending.pop(f)

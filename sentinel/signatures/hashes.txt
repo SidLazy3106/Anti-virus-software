@@ -1,4 +1,4 @@
 # One SHA-256 per line, optionally followed by a name. Lines starting with # are ignored.
-# Updated feeds are written to ~/.sentinel/signatures/ by `python main.py update`.
+# Updated feeds are written to ~/.x-secure/signatures/ by `python main.py update`.
 # EICAR standard antivirus test file (harmless):
 275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f EICAR-Test-File

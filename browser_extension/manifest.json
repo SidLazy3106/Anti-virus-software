@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "Sentinel Browser Guard",
-  "version": "0.1.0",
-  "description": "Warns about phishing-style URLs, risky downloads and suspicious login pages.",
+  "name": "X-Secure Browser Guard",
+  "version": "0.2.0",
+  "description": "Warns about phishing-style URLs, risky downloads and suspicious login pages, and hands finished downloads to the X-Secure desktop scanner when it is installed.",
   "permissions": [
     "webNavigation",
     "storage",
     "downloads",
     "notifications",
-    "tabs"
+    "tabs",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -34,6 +35,6 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Sentinel Browser Guard"
+    "default_title": "X-Secure Browser Guard"
   }
 }

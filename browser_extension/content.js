@@ -20,7 +20,7 @@
   const bar = document.createElement("div");
   bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#b00020;color:#fff;" +
     "font:14px/1.4 system-ui,sans-serif;padding:10px 14px;box-shadow:0 2px 6px rgba(0,0,0,.4)";
-  bar.textContent = "Sentinel warning: this page asks for a password and looks risky. " + reasons.slice(0, 3).join(" | ");
+  bar.textContent = "X-Secure warning: this page asks for a password and looks risky. " + reasons.slice(0, 3).join(" | ");
   const close = document.createElement("button");
   close.textContent = "Dismiss";
   close.style.cssText = "margin-left:12px;cursor:pointer";

@@ -2,16 +2,27 @@
 const BRANDS = ["google","microsoft","paypal","amazon","facebook","instagram","netflix","github","apple",
   "icloud","outlook","whatsapp","linkedin","dropbox","binance","coinbase","paytm","phonepe","flipkart",
   "hdfcbank","icicibank","sbi"];
-const OFFICIAL = new Set(["google.com","googleapis.com","gstatic.com","googlevideo.com","googleusercontent.com",
-  "microsoft.com","microsoftonline.com","live.com","office.com","windows.net","paypal.com","amazon.com","amazon.in",
-  "amazonaws.com","facebook.com","fbcdn.net","instagram.com","netflix.com","github.com","githubusercontent.com",
+const OFFICIAL = new Set(["google.com","gstatic.com","googlevideo.com",
+  "microsoft.com","microsoftonline.com","live.com","office.com","paypal.com","amazon.com","amazon.in",
+  "facebook.com","fbcdn.net","instagram.com","netflix.com","github.com",
   "apple.com","icloud.com","whatsapp.com","linkedin.com","dropbox.com","binance.com","coinbase.com","paytm.com",
   "phonepe.com","flipkart.com","hdfcbank.com","icicibank.com","sbi.co.in"]);
 const RISKY_TLDS = new Set(["zip","mov","top","xyz","click","tk","ml","ga","cf","gq","work","country","kim",
   "loan","men","icu","cyou"]);
 const KEYWORDS = ["login","signin","verify","secure","account","update","wallet","password","billing","confirm","suspend"];
 const MULTI = new Set(["co.uk","com.au","co.in","org.in","net.in","ac.in","gov.in","co.jp","com.br","co.za"]);
+// Shared hosting / user-content platforms: anyone can publish here, so brand + keyword checks still apply.
+const USER_CONTENT = new Set(["amazonaws.com","googleapis.com","googleusercontent.com","githubusercontent.com",
+  "windows.net","appspot.com","firebaseapp.com","web.app","github.io","pages.dev","workers.dev","r2.dev",
+  "netlify.app","vercel.app","herokuapp.com","azurewebsites.net","blogspot.com","000webhostapp.com","glitch.me",
+  "wixsite.com","weebly.com","ngrok.io","ngrok-free.app","trycloudflare.com","ipfs.io","dweb.link"]);
 const SUSPICIOUS_AT = 35, MALICIOUS_AT = 70;
+
+// Host exactly as typed (the URL parser rewrites 3232235777 / 0xC0A80001 to dotted form).
+function rawHostOf(raw) {
+  const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^\/?#\\]*@)?(\[[^\]]*\]|[^\/?#:\\]*)/i.exec(raw.trim());
+  return m ? m[1].toLowerCase().replace(/\.$/, "") : "";
+}
 
 function lev(a, b) {
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -41,7 +52,10 @@ function analyzeUrl(raw, badDomains = []) {
   if (badDomains.some(d => host === d || host.endsWith("." + d))) add(100, "Domain is on the known-malicious list");
 
   const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith("[");
-  if (isIp) add(30, "Uses a raw IP address instead of a domain name");
+  if (isIp) {
+    add(30, "Uses a raw IP address instead of a domain name");
+    if (!host.startsWith("[") && rawHostOf(raw) !== host) add(25, "IP address written in a disguised form (decimal/hex/octal)");
+  }
   if (u.username || u.password) add(40, "Contains '@' in the address (hides the real destination)");
   if (host.includes("xn--")) add(25, "Punycode domain (possible look-alike characters)");
 
@@ -54,7 +68,14 @@ function analyzeUrl(raw, badDomains = []) {
     if (RISKY_TLDS.has(tld)) add(15, `Uncommon TLD .${tld} often used in abuse`);
     if (labels.length - reg.split(".").length >= 3) add(15, "Excessive number of subdomains");
     if ((host.match(/-/g) || []).length >= 3) add(10, "Many hyphens in the domain");
-    if (!OFFICIAL.has(reg)) {
+    if (USER_CONTENT.has(reg)) {
+      const tail = (host.endsWith(reg) ? host.slice(0, host.length - reg.length) : "") + path;
+      for (const b of BRANDS) {
+        if (!reg.includes(b) && new RegExp(`(^|[^a-z])${b}([^a-z]|$)`).test(tail)) {
+          add(35, `Brand name '${b}' on a shared hosting site (${reg})`); break;
+        }
+      }
+    } else if (!OFFICIAL.has(reg)) {
       const norm = leet(regLabel);
       const sub = host.endsWith(reg) ? host.slice(0, host.length - reg.length) : "";
       for (const b of BRANDS) {
@@ -82,7 +103,9 @@ function analyzeUrl(raw, badDomains = []) {
 const RISKY_DL_EXT = new Set(["exe","scr","msi","bat","cmd","ps1","vbs","js","jse","hta","lnk","iso","jar","com","pif"]);
 const DECOY_DL = /\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|txt|mp3|mp4|zip)\s*\.(exe|scr|com|pif|bat|cmd|js|vbs|lnk|hta)$/i;
 function analyzeDownload(nameOrUrl) {
-  const name = decodeURIComponent((nameOrUrl.split(/[\\/]/).pop() || "").split("?")[0]);
+  const rawName = (nameOrUrl.split(/[\\/]/).pop() || "").split("?")[0];
+  let name = rawName;
+  try { name = decodeURIComponent(rawName); } catch { /* malformed %-escape: keep raw name */ }
   const ext = (name.split(".").pop() || "").toLowerCase();
   const reasons = [];
   if (DECOY_DL.test(name)) reasons.push("Double extension: a document name hiding a program");

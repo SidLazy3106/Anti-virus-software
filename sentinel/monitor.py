@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import quarantine
-from .scanner import MALICIOUS, SUSPICIOUS, Scanner
+from . import logger
+from .scanner import ENC_CMD, MALICIOUS, RANSOM_EXT, RANSOM_NOTE, SUSPICIOUS, Scanner
 
 try:
     from watchdog.events import FileSystemEventHandler
@@ -36,6 +37,7 @@ class Alert:
 
     def __post_init__(self):
         self.time = self.time or time.time()
+        logger.get().info("ALERT %s/%s %s | %s", self.source, self.severity, self.message, self.detail)
 
     def __str__(self):
         stamp = time.strftime("%H:%M:%S", time.localtime(self.time))
@@ -53,6 +55,7 @@ class RansomwareGuard:
         self.canaries: set[str] = set()
         self.events: deque = deque()
         self._last_rate_alert = 0.0
+        self._ransom_seen: dict = {}
 
     @staticmethod
     def _norm(p) -> str:
@@ -63,6 +66,9 @@ class RansomwareGuard:
             for name in self.CANARY_NAMES:
                 p = Path(folder) / name
                 try:
+                    if sys.platform == "win32" and p.exists():
+                        import ctypes  # writing over a hidden file fails on Windows; unhide first
+                        ctypes.windll.kernel32.SetFileAttributesW(str(p), 0x80)  # normal
                     p.write_text("Sentinel canary file. Do not edit. If this changes, something is encrypting your files.\n")
                     if sys.platform == "win32":
                         import ctypes
@@ -79,7 +85,27 @@ class RansomwareGuard:
                 pass
         self.canaries.clear()
 
+    def _ransom_indicator(self, path, kind):
+        """Encrypted-file extensions and ransom-note names (alert at most once per folder/30s)."""
+        if kind not in ("created", "modified"):
+            return
+        name = os.path.basename(str(path))
+        ext = os.path.splitext(name)[1].lower()
+        if ext in RANSOM_EXT:
+            what = f"file with ransomware extension {ext}"
+        elif RANSOM_NOTE.search(name):
+            what = "file that looks like a ransom note"
+        else:
+            return
+        key = (os.path.dirname(self._norm(path)), ext or "note")
+        now = time.time()
+        if now - self._ransom_seen.get(key, 0) < 30:
+            return
+        self._ransom_seen[key] = now
+        self.on_alert(Alert("ransomware", "critical", f"Created {what}", str(path)))
+
     def event(self, path, kind):
+        self._ransom_indicator(path, kind)
         n = self._norm(path)
         if n in self.canaries and kind in ("modified", "deleted", "moved"):
             self.on_alert(Alert("ransomware", "critical",
@@ -217,8 +243,9 @@ def _stem(name: str) -> str:
 class ProcessWatcher:
     """Polls for new processes and flags suspicious parent/child chains and risky launches."""
 
-    def __init__(self, on_alert, interval=1.0):
-        self.on_alert, self.interval = on_alert, interval
+    def __init__(self, on_alert, interval=1.0, scanner=None):
+        self.on_alert, self.interval, self.scanner = on_alert, interval, scanner
+        self._scanned: set = set()
         self._stop = threading.Event()
         self._known: set = set()
         self._thread = None
@@ -226,23 +253,31 @@ class ProcessWatcher:
     def start(self):
         if psutil is None:
             raise RuntimeError("Process watching needs 'psutil' (pip install psutil).")
-        self._known = {p.pid for p in psutil.process_iter()}
+        self._known = {self._key(p) for p in psutil.process_iter(["pid", "create_time"])}
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self):
         self._stop.set()
 
+    @staticmethod
+    def _key(p):
+        # (pid, start time): Windows reuses PIDs, so a PID alone can't identify a process
+        return p.pid, p.info.get("create_time")
+
     def _run(self):
         while not self._stop.wait(self.interval):
-            for p in psutil.process_iter(["pid", "name", "ppid", "exe", "cmdline"]):
-                if p.pid in self._known:
+            alive = set()
+            for p in psutil.process_iter(["pid", "name", "ppid", "exe", "cmdline", "create_time"]):
+                k = self._key(p)
+                alive.add(k)
+                if k in self._known:
                     continue
-                self._known.add(p.pid)
                 try:
                     self._inspect(p)
                 except (psutil.Error, OSError):
                     pass
+            self._known = alive  # forget exited processes so a reused PID is inspected again
 
     def _inspect(self, p):
         name = _stem(p.info.get("name"))
@@ -252,8 +287,15 @@ class ProcessWatcher:
         if name in SUSPICIOUS_CHAINS.get(pstem, ()):
             self.on_alert(Alert("process", "high",
                                 f"{parent} spawned {p.info['name']} (common malware chain)", cmd[:300]))
-        if name in ("powershell", "pwsh") and "-enc" in cmd.lower():
+        if name in ("powershell", "pwsh") and ENC_CMD.search(cmd.encode("utf-8", "ignore")):
             self.on_alert(Alert("process", "high", "PowerShell started with an encoded command", cmd[:300]))
         exe = (p.info.get("exe") or "").lower()
         if exe and any(d in exe for d in RISKY_DIRS):
             self.on_alert(Alert("process", "info", f"{p.info['name']} launched from a temp/downloads folder", exe))
+            if self.scanner is not None and exe not in self._scanned and os.path.isfile(exe):
+                self._scanned.add(exe)
+                res = self.scanner.scan_file(exe)
+                if res.verdict in (SUSPICIOUS, MALICIOUS):
+                    self.on_alert(Alert("process", "high" if res.verdict == MALICIOUS else "warning",
+                                        f"Running program is {res.verdict.upper()}: {p.info['name']}",
+                                        "; ".join(res.reasons)[:300]))

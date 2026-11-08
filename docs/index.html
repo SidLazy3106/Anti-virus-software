@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>X-Secure: a Windows security suite built in Python</title>
+<meta name="description" content="X-Secure: file scanner, real-time protection, browser guard, system audit and a safe PC optimizer. Python, Tkinter, Windows APIs.">
+<style>
+  :root {
+    --bg:#0A0F1F; --surface:#131B33; --surface2:#1A2442; --border:#222D52; --text:#EEF2FF; --muted:#98A4C7;
+    --faint:#63708F; --primary:#5B8CFF; --success:#34D399; --warning:#FBBF24; --danger:#FB7185; --accent:#8B6CFF;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#F5F7FD; --surface:#FFFFFF; --surface2:#EEF2FC; --border:#DCE3F4; --text:#0E1630; --muted:#4A5675; --faint:#7A86A6; }
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif; }
+  a { color:var(--primary); }
+  .wrap { max-width:1060px; margin:0 auto; padding:0 20px; }
+  header.hero { padding:72px 0 40px; }
+  .eyebrow { color:var(--primary); font-weight:600; letter-spacing:.08em; text-transform:uppercase; font-size:13px; }
+  h1 { font-size:clamp(34px,6vw,56px); line-height:1.1; margin:10px 0 14px; letter-spacing:-.02em; }
+  .lead { color:var(--muted); font-size:19px; max-width:720px; margin:0 0 26px; }
+  .btns { display:flex; flex-wrap:wrap; gap:10px; }
+  .btn { display:inline-block; padding:11px 20px; border-radius:12px; font-weight:600; text-decoration:none; background:var(--primary); color:#fff; border:1px solid transparent; }
+  .btn.secondary { background:var(--surface2); color:var(--text); border-color:var(--border); }
+  .btn[hidden] { display:none; }
+  .hero-img { margin-top:38px; border-radius:16px; border:1px solid var(--border); box-shadow:0 24px 70px rgba(0,0,0,.35); width:100%; height:auto; display:block; }
+  section { padding:44px 0; }
+  h2 { font-size:28px; margin:0 0 8px; letter-spacing:-.01em; }
+  .sub { color:var(--muted); margin:0 0 24px; max-width:760px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px; }
+  .stat b { display:block; font-size:30px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .stat span { color:var(--muted); font-size:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr)); gap:14px; }
+  .card h3 { margin:0 0 6px; font-size:17px; }
+  .card p { margin:0; color:var(--muted); font-size:15px; }
+  .shots { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr)); gap:18px; }
+  figure { margin:0; }
+  figure img { width:100%; height:auto; border-radius:12px; border:1px solid var(--border); display:block; }
+  figcaption { color:var(--muted); font-size:14px; margin-top:8px; }
+  .checker { background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:22px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; }
+  input[type=text] { flex:1 1 220px; min-width:0; padding:13px 15px; border-radius:12px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font:inherit; }
+  input[type=text]:focus-visible, .btn:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+  button.btn { cursor:pointer; font:inherit; font-weight:600; }
+  .tries { margin:12px 0 0; font-size:14px; color:var(--muted); }
+  .tries button { background:none; border:0; color:var(--primary); cursor:pointer; font:inherit; padding:2px 6px; text-decoration:underline; }
+  #result { margin-top:18px; min-height:24px; }
+  .verdict { display:flex; align-items:center; gap:12px; font-size:20px; font-weight:700; }
+  .dot { width:12px; height:12px; border-radius:50%; flex:none; }
+  .clean .dot { background:var(--success); } .suspicious .dot { background:var(--warning); } .malicious .dot { background:var(--danger); }
+  .clean { color:var(--success); } .suspicious { color:var(--warning); } .malicious { color:var(--danger); }
+  .bar { height:8px; border-radius:99px; background:var(--surface2); margin:12px 0; overflow:hidden; }
+  .bar i { display:block; height:100%; border-radius:99px; transition:width .35s ease; }
+  #result ul { margin:8px 0 0; padding-left:20px; color:var(--text); }
+  .note { color:var(--faint); font-size:13px; margin-top:12px; }
+  details { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 18px; margin-bottom:10px; }
+  summary { cursor:pointer; font-weight:600; }
+  details p { color:var(--muted); margin:10px 0 0; }
+  footer { border-top:1px solid var(--border); padding:30px 0 60px; color:var(--faint); font-size:14px; }
+  code { background:var(--surface2); padding:2px 6px; border-radius:6px; font-size:.92em; }
+  @media (max-width:520px) { .shots { grid-template-columns:1fr; } header.hero { padding-top:44px; } }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior:auto; } .bar i { transition:none; } }
+</style>
+</head>
+<body>
+<header class="hero"><div class="wrap">
+  <div class="eyebrow">Python · Tkinter · Windows APIs</div>
+  <h1>X-Secure</h1>
+  <p class="lead">A Windows security suite I built from scratch: a parallel file scanner, real-time protection, a browser guard that hands downloads to the desktop engine, a system health audit, and a PC optimizer that never changes anything without asking and can undo everything it does.</p>
+  <div class="btns">
+    <a class="btn" href="#try">Try the link checker</a>
+    <a class="btn secondary" id="repoBtn" href="#" hidden>View source on GitHub</a>
+    <a class="btn secondary" id="relBtn" href="#" hidden>Download for Windows</a>
+  </div>
+  <img class="hero-img" src="img/home.png" alt="X-Secure home screen showing the protection level ring and four status cards" width="1551" height="941">
+</div></header>
+
+<section><div class="wrap">
+  <h2>Measured, not claimed</h2>
+  <p class="sub">Numbers from the project's own benchmark and tests, run on my development PC (Windows 11, Ryzen 7 4800H). Detection samples are harmless synthetic files, one per technique, so this shows each detection works, not how well it does against malware in the wild.</p>
+  <div class="stats">
+    <div class="card stat"><b>0 / 20,000</b><span>clean Windows and Program Files binaries flagged (false-positive rate 0.000%)</span></div>
+    <div class="card stat"><b>10 / 10</b><span>harmless test samples detected, one per detection technique</span></div>
+    <div class="card stat"><b>162,903</b><span>live malicious and phishing domains from public threat feeds</span></div>
+    <div class="card stat"><b>95</b><span>automated tests, including real-process and real-registry checks</span></div>
+  </div>
+</div></section>
+
+<section id="try"><div class="wrap">
+  <h2>Try the link checker</h2>
+  <p class="sub">This is the same JavaScript engine that runs in the X-Secure browser extension. It runs entirely in your browser; nothing you type is sent anywhere.</p>
+  <div class="checker">
+    <form class="row" id="form">
+      <input type="text" id="url" placeholder="Paste a link, e.g. http://paypa1-secure-login.xyz/verify" aria-label="Link to check" autocomplete="off" spellcheck="false">
+      <button class="btn" type="submit">Check link</button>
+    </form>
+    <p class="tries">Try:
+      <button type="button" data-u="http://paypa1-secure-login.xyz/verify">fake PayPal login</button>
+      <button type="button" data-u="http://185.1.2.3/login">raw IP address</button>
+      <button type="button" data-u="http://3232235777/bank">disguised IP</button>
+      <button type="button" data-u="https://evil.s3.amazonaws.com/paypal/login">phishing on shared hosting</button>
+      <button type="button" data-u="https://github.com/login">real GitHub</button>
+    </p>
+    <div id="result" role="status" aria-live="polite"></div>
+    <p class="note">The desktop app also checks links against a downloaded list of about 160,000 known-bad domains and uses the Public Suffix List; this web demo uses the built-in rules only.</p>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>The app</h2>
+  <p class="sub">A dark, rounded desktop UI with antialiased graphs, keyboard navigation and plain-English results.</p>
+  <p class="note" style="margin:-10px 0 20px">About these screenshots: the Home and Scan screens show <b>sample data</b> (example files and a pre-filled scan summary) so none of my real file paths appear. The hardware details, memory/CPU gauges and mode list on the optimizer screen are real readings from my PC. The Analytics bars are real short test runs, and the mode-switch graph is a labelled illustration.</p>
+  <div class="shots">
+    <figure><img loading="lazy" src="img/scan.png" alt="Scan page with quick, full and custom scans and a results table" width="1551" height="941"><figcaption>Scan (sample results): quick, full-PC and custom, with the reason each file was flagged and a scheduler.</figcaption></figure>
+    <figure><img loading="lazy" src="img/optimizer.png" alt="PC optimizer showing detected hardware and four performance modes" width="1551" height="941"><figcaption>PC optimizer: detects the real hardware and offers changes that are approved one by one and fully restorable.</figcaption></figure>
+    <figure><img loading="lazy" src="img/mode.png" alt="Gaming mode switch animation showing a conceptual graph" width="1551" height="941"><figcaption>Mode switch: a labelled illustration of what the mode prioritizes. Success is shown only after Windows confirms the change.</figcaption></figure>
+    <figure><img loading="lazy" src="img/analytics.png" alt="Performance analytics page comparing measured CPU use between modes" width="1551" height="941"><figcaption>Performance Analytics: real measurements per mode, with sample counts. Anything unmeasurable says "Not available".</figcaption></figure>
+    <figure><img loading="lazy" src="img/web.png" alt="Web guard page flagging a phishing link as dangerous" width="1551" height="941"><figcaption>Web guard: the link checker above, inside the desktop app.</figcaption></figure>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>What's under the hood</h2>
+  <div class="grid">
+    <div class="card"><h3>Scan engine</h3><p>SHA-256 blocklist, entropy and PE heuristics, script and encoded-PowerShell analysis (including UTF-16 and download-and-run cradles), archive and Office-macro inspection, ransomware signs, and hidden NTFS alternate data streams.</p></div>
+    <div class="card"><h3>Fast and safe to run</h3><p>Parallel worker processes at low priority, a SQLite cache that skips unchanged files, and symlink, junction and cloud-file handling so a full-PC scan never loops or downloads anything.</p></div>
+    <div class="card"><h3>Fewer false alarms</h3><p>Authenticode signatures are checked through Windows' own WinVerifyTrust, offline, and only soften program-structure heuristics. A signature never excuses a double extension or a known-bad hash.</p></div>
+    <div class="card"><h3>Encrypted quarantine</h3><p>Quarantined files are encrypted with Windows DPAPI, bound to their own id so tampered or swapped files refuse to restore. No key sits next to the data.</p></div>
+    <div class="card"><h3>Browser guard + bridge</h3><p>A Chrome/Edge extension that shares its URL logic with the desktop app (verified identical by tests that run the JS in Node) and sends each finished download to the desktop scanner over Native Messaging.</p></div>
+    <div class="card"><h3>Honest optimizer</h3><p>Reversible changes only, each approved first and verified after. It never closes apps, touches services, security features or boot settings, and shows "no meaningful change" when that's the truth.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Limitations, stated up front</h2>
+  <details><summary>It is a user-mode prototype, not a replacement for Microsoft Defender</summary><p>It can detect and react, but cannot block a program before it starts; that needs a kernel driver. Heuristics miss novel malware and can flag unusual but legitimate software.</p></details>
+  <details><summary>Anything running as you can reach its data</summary><p>The allowlist, cache and quarantine live in your user profile, so malware running with your privileges could tamper with them. Fixing that needs a SYSTEM service.</p></details>
+  <details><summary>The performance graphs on the mode cards are illustrations</summary><p>They show what each mode is designed to prioritize and are labelled that way. Measured numbers appear only on the Analytics page, and FPS, frame time and power draw show "Not available" because Windows does not expose them to normal apps.</p></details>
+  <details><summary>Builds are not code-signed</summary><p>Windows SmartScreen may warn on first run. You can also run it from source.</p></details>
+</div></section>
+
+<footer><div class="wrap">
+  X-Secure is a learning and portfolio project. Threat data from URLhaus (via the malware-filter project) and Phishing Army (CC BY-NC 4.0).
+  <span id="footRepo"></span>
+</div></footer>
+
+<script src="analyzer.js"></script>
+<script>
+  // Set these two links once the repository is public; the buttons stay hidden while they are empty.
+  const REPO_URL = "https://github.com/SidLazy3106/Anti-virus-software";
+  const RELEASE_URL = "";
+  for (const [id, url] of [["repoBtn", REPO_URL], ["relBtn", RELEASE_URL]]) {
+    const el = document.getElementById(id);
+    if (url) { el.href = url; el.hidden = false; }
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const COLOR = { clean: "var(--success)", suspicious: "var(--warning)", malicious: "var(--danger)" };
+  const TITLE = { clean: "Looks clean", suspicious: "Suspicious: be careful", malicious: "Dangerous: don't open it" };
+
+  function esc(s) { return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+  function check(raw) {
+    raw = raw.trim();
+    const out = $("result");
+    if (!raw) { out.innerHTML = ""; return; }
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = "http://" + raw;
+    const v = analyzeUrl(raw, []);
+    const why = v.reasons.length
+      ? "<ul>" + v.reasons.map((r) => "<li>" + esc(r) + "</li>").join("") + "</ul>"
+      : "<p class='note'>No warning signs found. That does not guarantee a site is safe.</p>";
+    out.innerHTML =
+      `<div class="verdict ${v.verdict}"><span class="dot"></span>${TITLE[v.verdict]}</div>` +
+      `<div class="bar" aria-hidden="true"><i style="width:${v.score}%;background:${COLOR[v.verdict]}"></i></div>` +
+      `<div class="note">Risk score ${v.score} / 100</div>` + why;
+  }
+
+  $("form").addEventListener("submit", (e) => { e.preventDefault(); check($("url").value); });
+  document.querySelectorAll(".tries button").forEach((b) =>
+    b.addEventListener("click", () => { $("url").value = b.dataset.u; check(b.dataset.u); }));
+</script>
+</body>
+</html>

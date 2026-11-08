@@ -5,6 +5,7 @@ import csv
 import io
 import ipaddress
 import json
+import os
 import re
 import subprocess
 import sys
@@ -44,8 +45,8 @@ class AuditReport:
 
 def _run(cmd, timeout=25) -> str:
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, creationflags=flags)
-    return r.stdout.strip()
+    r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, creationflags=flags)
+    return (r.stdout or "").strip()
 
 
 def _ps_json(script):
@@ -149,7 +150,7 @@ def check_scheduled_tasks():
         seen, findings = set(), []
         for r in rows:
             name = r.get("TaskName", "")
-            if not name or name in seen or name.startswith("\\Microsoft\\"):
+            if not name or name in seen:  # \Microsoft\ tasks included: malware hides there too
                 continue
             seen.add(name)
             cmd = r.get("Task To Run", "")
@@ -159,6 +160,156 @@ def check_scheduled_tasks():
         return findings
     except (OSError, subprocess.SubprocessError):
         return [Finding("info", "Persistence", "Could not enumerate scheduled tasks")]
+
+
+SECURITY_HOST_HINTS = ("microsoft", "windowsupdate", "defender", "google", "paypal", "amazon", "facebook",
+                       "apple", "github", "virustotal", "kaspersky", "avast", "avg.", "mcafee", "norton",
+                       "bitdefender", "malwarebytes", "eset", "symantec", "sophos", "trendmicro")
+LOOPBACK = ("127.0.0.1", "::1", "0.0.0.0")
+AUTORUN_EXT = {".exe", ".bat", ".cmd", ".vbs", ".vbe", ".js", ".jse", ".ps1", ".hta", ".scr", ".wsf"}  # .lnk shortcuts are normal in Startup
+IFEO_HIJACK = {"sethc.exe", "utilman.exe", "osk.exe", "narrator.exe", "magnify.exe", "displayswitch.exe",
+               "atbroker.exe"}
+
+
+def parse_hosts(text: str) -> list:
+    """Return [(ip, hostname)] from hosts-file text (comments stripped)."""
+    out = []
+    for line in text.splitlines():
+        parts = line.split("#", 1)[0].split()
+        if len(parts) >= 2:
+            out.extend((parts[0], h.lower()) for h in parts[1:])
+    return out
+
+
+def is_unquoted_service_path(path_name) -> bool:
+    """True for 'C:\\Program Files\\App\\svc.exe -x' (unquoted path containing spaces)."""
+    p = (path_name or "").strip()
+    if not p or p.startswith('"'):
+        return False
+    m = re.match(r"^(.*?\.exe)\b", p, re.I)
+    return bool(m and " " in m.group(1))
+
+
+def check_hosts_file():
+    path = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), r"System32\drivers\etc\hosts")
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as f:
+            entries = parse_hosts(f.read())
+    except OSError:
+        return []
+    out, others = [], {}
+    for ip, host in dict.fromkeys(entries):  # de-duplicate repeated lines
+        if host == "localhost" and ip in LOOPBACK:
+            continue
+        if any(k in host for k in SECURITY_HOST_HINTS):
+            out.append(Finding("high", "Hardening", f"hosts file redirects {host} to {ip}",
+                               "Malware edits this file to block antivirus/update sites or hijack logins.",
+                               f"Remove the line from {path} unless you added it yourself"))
+        elif ip not in LOOPBACK:
+            others.setdefault(ip, []).append(host)
+    for ip, hosts in others.items():  # one finding per destination, not one per line
+        out.append(Finding("low", "Hardening", f"hosts file redirects {len(hosts)} site(s) to {ip}",
+                           ", ".join(hosts[:5]) + (" ..." if len(hosts) > 5 else ""),
+                           f"Review {path}; cracked-software installers often add entries here"))
+    return out
+
+
+def check_defender_exclusions():
+    data = _ps_json("Get-MpPreference | Select-Object ExclusionPath,ExclusionExtension,ExclusionProcess"
+                    " | ConvertTo-Json -Compress")
+    if not data:
+        return []
+    out = []
+    for key, label in (("ExclusionPath", "folder"), ("ExclusionExtension", "extension"),
+                       ("ExclusionProcess", "process")):
+        vals = data.get(key) or []
+        for v in ([vals] if isinstance(vals, str) else vals):
+            if not v or v.startswith("N/A"):  # non-admin shells get a placeholder
+                continue
+            high = bool(RISKY_CMD.search(v)) or v.strip(". ").lower() in ("exe", "dll", "ps1", "c:\\")
+            out.append(Finding("high" if high else "medium", "Hardening",
+                               f"Defender excludes {label}: {v}",
+                               "Malware often adds exclusions so it can run unscanned.",
+                               "Windows Security > Virus & threat protection > Manage settings > Exclusions"))
+    return out
+
+
+def check_startup_folders():
+    dirs = [os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs\Startup"),
+            os.path.join(os.environ.get("ProgramData", ""), r"Microsoft\Windows\Start Menu\Programs\StartUp")]
+    out = []
+    for d in dirs:
+        if not d or not os.path.isdir(d):
+            continue
+        for fn in os.listdir(d):
+            if fn.lower() == "desktop.ini":
+                continue
+            risky = os.path.splitext(fn)[1].lower() in AUTORUN_EXT
+            out.append(Finding("medium" if risky else "info", "Persistence", f"Startup folder item: {fn}", d,
+                               "Delete it if you don't recognise it" if risky else ""))
+    return out
+
+
+def check_services():
+    data = _ps_json("Get-CimInstance Win32_Service | Select-Object Name,PathName | ConvertTo-Json -Compress")
+    if not data:
+        return []
+    data = [data] if isinstance(data, dict) else data
+    bad = [d for d in data if is_unquoted_service_path(d.get("PathName"))]
+    out = [Finding("medium", "Hardening", f"Service '{d['Name']}' has an unquoted path with spaces",
+                   d.get("PathName") or "", "Quote the ImagePath in HKLM\\SYSTEM\\CurrentControlSet\\Services")
+           for d in bad[:10]]
+    if len(bad) > 10:
+        out.append(Finding("low", "Hardening", f"...and {len(bad) - 10} more unquoted service paths"))
+    return out
+
+
+def check_wmi_persistence():
+    data = _ps_json("Get-CimInstance -Namespace root\\subscription -ClassName __EventConsumer"
+                    " | Select-Object Name,@{n='Class';e={$_.CimClass.CimClassName}} | ConvertTo-Json -Compress")
+    if not data:
+        return []
+    data = [data] if isinstance(data, dict) else data
+    return [Finding("high", "Persistence", f"WMI event consumer: {d.get('Name')}",
+                    f"Type {d.get('Class')}. Fileless malware uses these to run code at boot.",
+                    "Investigate and remove with Get-WmiObject -Namespace root\\subscription")
+            for d in data if d.get("Class") in ("CommandLineEventConsumer", "ActiveScriptEventConsumer")]
+
+
+def check_registry_persistence():
+    import winreg
+    hklm, out = winreg.HKEY_LOCAL_MACHINE, []
+    base = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options"
+    try:
+        with winreg.OpenKey(hklm, base) as k:
+            i = 0
+            while True:
+                try:
+                    sub = winreg.EnumKey(k, i)
+                except OSError:
+                    break
+                i += 1
+                dbg = _reg_value(hklm, base + "\\" + sub, "Debugger")
+                if dbg:
+                    out.append(Finding("high" if sub.lower() in IFEO_HIJACK else "medium", "Persistence",
+                                       f"Debugger hijack on {sub}", str(dbg),
+                                       "Delete the Debugger value unless you are debugging this program"))
+    except OSError:
+        pass
+    win = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+    appinit = _reg_value(hklm, win + r"\Windows", "AppInit_DLLs")
+    if appinit and str(appinit).strip():
+        out.append(Finding("high", "Persistence", "AppInit_DLLs injects a DLL into every program",
+                           str(appinit), "Clear the AppInit_DLLs value"))
+    shell = _reg_value(hklm, win + r"\Winlogon", "Shell")
+    if shell and str(shell).strip().lower() != "explorer.exe":
+        out.append(Finding("high", "Persistence", "Winlogon Shell was changed", str(shell),
+                           "Reset the value to explorer.exe"))
+    userinit = _reg_value(hklm, win + r"\Winlogon", "Userinit")
+    if userinit and len([x for x in str(userinit).split(",") if x.strip()]) > 1:
+        out.append(Finding("high", "Persistence", "Winlogon Userinit launches extra programs", str(userinit),
+                           r"Reset the value to C:\Windows\system32\userinit.exe,"))
+    return out
 
 
 # ------------------------------------------------------------------ network
@@ -199,8 +350,9 @@ def run_audit() -> AuditReport:
     findings = []
     checks = [check_network]
     if IS_WIN:
-        checks = [check_firewall, check_defender, check_registry_settings,
-                  check_startup, check_scheduled_tasks, check_network]
+        checks = [check_firewall, check_defender, check_defender_exclusions, check_registry_settings,
+                  check_registry_persistence, check_startup, check_startup_folders, check_scheduled_tasks,
+                  check_wmi_persistence, check_services, check_hosts_file, check_network]
     else:
         findings.append(Finding("info", "System", "Non-Windows OS: only network checks are available"))
     for fn in checks:

@@ -14,8 +14,8 @@ rule Suspicious_Script_Downloader
         description = "Script that downloads and runs content with an encoded command"
     strings:
         $dl  = "DownloadString" nocase
-        $enc = "-enc" nocase
-        $iex = "IEX" nocase
+        $enc = "-enc" nocase fullword
+        $iex = "IEX" nocase fullword
     condition:
         2 of them
 }

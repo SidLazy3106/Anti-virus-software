@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Build output (rebuild with:  py -m PyInstaller --noconfirm --clean xsecure.spec)
+build/
+dist/
+*.egg-info/
+
+# Local data and test leftovers (X-Secure keeps its data in %USERPROFILE%\.x-secure, not here)
+.x-secure/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+*.partial
+*.qz
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

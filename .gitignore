@@ -34,3 +34,9 @@ htmlcov/
 # Release output (built by tools/build_release.py; publish the zip as a GitHub Release asset)
 release/
 docs/downloads/
+
+# Local AI-tool files (keep out of the repo)
+CLAUDE.md
+.claude/
+.agents/
+skills-lock.json

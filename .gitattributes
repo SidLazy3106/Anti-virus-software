@@ -1,0 +1,3 @@
+# Generated files are compared byte-for-byte in CI, so keep LF line endings on every OS
+*.js text eol=lf
+*.json text eol=lf
